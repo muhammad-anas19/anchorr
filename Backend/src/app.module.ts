@@ -5,6 +5,9 @@ import { AppController } from './app.controller';
 import { Workspace } from './database/entities/workspace.entity';
 import { User } from './database/entities/user.entity';
 import { Membership } from './database/entities/membership.entity';
+import { RefreshToken } from './database/entities/refresh-token.entity';
+import { AuthModule } from './modules/auth/auth.module';
+import { WorkspacesModule } from './modules/workspaces/workspaces.module';
 
 @Module({
   imports: [
@@ -19,10 +22,12 @@ import { Membership } from './database/entities/membership.entity';
         username: config.get<string>('DB_USERNAME'),
         password: config.get<string>('DB_PASSWORD'),
         database: config.get<string>('DB_NAME'),
-        entities: [Workspace, User, Membership],
+        entities: [Workspace, User, Membership, RefreshToken],
         synchronize: false,
       }),
     }),
+    AuthModule,
+    WorkspacesModule,
   ],
   controllers: [AppController],
 })

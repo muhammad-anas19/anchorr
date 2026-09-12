@@ -1,5 +1,6 @@
 import { Column, CreateDateColumn, Entity, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
 import { Membership } from './membership.entity';
+import { RefreshToken } from './refresh-token.entity';
 
 @Entity('users')
 export class User {
@@ -17,4 +18,7 @@ export class User {
 
   @OneToMany(() => Membership, (membership) => membership.user)
   memberships: Membership[];
+
+  @OneToMany(() => RefreshToken, (refreshToken) => refreshToken.user)
+  refreshTokens: RefreshToken[];
 }

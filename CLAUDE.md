@@ -58,6 +58,25 @@ docs/
 docker-compose.yml  Redis only (see Locked Decisions — Postgres is native, not Docker)
 ```
 
+**Inside `Backend/src/`** (reorganized mid-Phase-2 to match a pattern from the user's other project — see `docs/phases/02-*.md`'s "Repo layout" note):
+
+```
+Backend/src/
+├── common/            cross-cutting guards/decorators used across module boundaries — NOT split by feature
+│   ├── decorators/      current-user.decorator.ts, roles.decorator.ts
+│   └── guards/          jwt-auth, login-throttle, workspace, roles — all guards live here regardless of "owning" module
+├── database/           entities, migrations, data-source.ts — top-level sibling to modules/, not nested inside one
+├── modules/             every feature module
+│   ├── auth/
+│   ├── tenancy/          just tenant-context.service.ts + tenancy.module.ts (its guards are in common/)
+│   └── workspaces/
+├── redis/               top-level sibling to modules/, not nested inside auth/
+├── app.module.ts
+└── main.ts
+```
+
+**Rule going forward:** a new guard, interceptor, filter, or cross-cutting decorator goes in `src/common/`, not inside whichever feature module first needed it. A new feature (with its own controller/service/module) goes in `src/modules/<name>/`. Shared infrastructure that multiple modules depend on (database, redis, and similarly config/cache/stripe if/when they exist) stays a top-level sibling to `modules/`.
+
 ## Locked decisions (see `docs/PHASES.md` for the short version, `docs/phases/01-*.md` and the `anchor-project-decisions` memory for full reasoning)
 
 - **LLM provider:** Google Gemini for both chat and embeddings.
@@ -70,20 +89,23 @@ docker-compose.yml  Redis only (see Locked Decisions — Postgres is native, not
 
 ## Current status
 
-**Phase 1 (multi-tenant schema foundation) — built, not yet fully closed out.**
+**Phase 1 (multi-tenant schema foundation) — fully done.** Schema, migration, tests, diagnostic and closing quiz all complete — see `docs/phases/01-monorepo-multitenant-schema.md` for the full record. Carried-forward open items from Phase 1's closing quiz (the two-TypeORM-config split, NestJS's async DI resolution, `migration:revert`'s scope) got real, concrete exercise during Phase 2's build below — check Phase 2's closing quiz to see whether they actually stuck.
+
+**Phase 2 (Auth & RBAC) — built and tested, closing quiz posed but not yet answered.**
 
 Done:
-- `Backend/` scaffolded (NestJS, npm-managed).
-- Three entities: `Workspace`, `User`, `Membership` (with `MembershipRole` enum), row-level tenancy (`workspace_id` FK on `Membership`), `ON DELETE CASCADE` on both FKs, indexes on both FK columns, `UNIQUE(workspace_id, user_id)`.
-- One migration (`CreateWorkspaceUserMembership`) applied successfully against the native Postgres 18 instance (database `anchor`, created manually since it didn't exist yet).
-- **`pgvector` deferred to Phase 7** — the native Postgres 18 install doesn't have it physically installed (confirmed via a real failed migration, not assumed); installing it needs Visual Studio Build Tools + compiling from source. The `EnablePgvectorExtension` migration was deleted (it never successfully applied) rather than left broken. See `docs/phases/01-*.md`, "pgvector: enabled, then deferred," for the full reasoning and the three options still on the table for Phase 7.
-- A Jest integration test (`Backend/src/database/schema.integration.spec.ts`) proving the UNIQUE and CASCADE behavior for real, passing against the live native database.
-- App boots cleanly (`npm start` in `Backend/`, `GET /health` → `{"status":"ok"}`) against the native database.
-- Full diagnostic (10 questions) scored and documented in `docs/phases/01-monorepo-multitenant-schema.md`.
+- Full auth flow: `POST /auth/register` (creates `User` + `Workspace` + an `owner` `Membership`), `/auth/login`, `/auth/refresh` (rotates on every use, revokes the old token), `/auth/logout` (revokes). JWT access (15 min) + refresh (7 days) via `@nestjs/jwt` + `passport-jwt`. Passwords hashed with bcrypt (12 rounds); refresh tokens hashed with SHA-256 (deliberately not bcrypt — see the phase doc for why that's the *correct* choice here, not a shortcut).
+- New `refresh_tokens` table/migration (`CreateRefreshTokens`), FK to `users`, `ON DELETE CASCADE`.
+- Tenant-scoping actually closed for real: `WorkspaceGuard` checks the authenticated user has a `Membership` for the `:workspaceId` in the URL (403 if not) and populates a request-scoped `TenantContextService`; `RolesGuard` + `@Roles(...)` enforce owner-only actions off that context. Proven via `PATCH /workspaces/:workspaceId/members/:userId` (owner-only) vs `GET .../members` (any member).
+- Login brute-force protection: a Redis-backed `LoginThrottleGuard` (5 attempts per email+IP per 60s) — Redis's first real job in this project. Phase 15 will generalize this into the full rate-limiting system; this is a deliberately narrow stopgap.
+- **`Backend/src/` reorganized mid-phase**: `common/` now holds all guards/decorators (cross-cutting, not split by feature), `modules/` holds feature modules (`auth`, `tenancy`, `workspaces`), `database/` and `redis/` stay top-level siblings. See "Repo structure" above and `docs/phases/02-*.md`'s "Repo layout" note for the full mapping — this was a deliberate mid-phase restructure requested by the user, not a refactor Claude initiated.
+- 5 test suites, 18 tests, all real (no mocks) — hitting the native Postgres and real Redis. Includes deliberately-broken cases: refresh token reuse after rotation, revoked-token reuse, cross-workspace 403, non-owner RBAC 403, forged-signature JWT, expired JWT, and the login throttle's 6th-attempt 429.
+- Full diagnostic (10 questions, 4 SOLID/4 SHAKY/2 UNKNOWN) documented in `docs/phases/02-auth-rbac.md`.
+- Two real, unforced failures surfaced and fixed during the build (both documented in the phase doc's Failure Cases): a stale incremental TypeScript build cache silently serving an old route after `dist/` wasn't cleared, and parallel Jest worker processes racing on the shared dev database (fixed with `--runInBand` — the deeper fix, a dedicated test database, is still not done).
 
-**Phase 1 closing quiz: answered and scored (2026-09-11).** Mixed results — several real gaps, not glossed over: see `docs/phases/01-*.md`'s Closing Quiz and "Topics to master" sections. Still genuinely UNKNOWN going into Phase 2: the two-TypeORM-config split, NestJS's async DI resolution (`inject: [...]`), and the specifics of `migration:revert`'s scope. These are carried forward deliberately, not forgotten — expect them to resurface when Phase 2 builds the auth guard (which is exactly where DI and config wiring get exercised for real).
+**Phase 2 closing quiz: answered and scored (2026-09-12).** Came back notably weaker than the opening diagnostic (0 SOLID / 3 SHAKY / 7 UNKNOWN, vs. 4/4/2 at the start) — several of these were things just built and demonstrated working hours earlier, which is real signal that "watched it work" and "can explain the mechanism" are different levels of understanding, not something to gloss over. Full Q&A, corrections, and a combined "Topics to master" list (7 items, ranked) are in `docs/phases/02-auth-rbac.md`. **Two topics are flagged as still critically weak going into Phase 3** and should get deliberate re-exposure rather than being assumed fixed: request-scoped DI / `ExecutionContext` (unresolved across *both* quizzes now), and the bcrypt-vs-SHA-256 entropy distinction (actually regressed between quizzes).
 
-**Next up:** Phase 2 — Auth & RBAC (see `docs/PHASES.md`). Note before starting: Phase 2 is also where the tenant-scoping gap named in C2 above (nothing currently stops a cross-workspace query) actually gets closed — that's the whole point of the guard/`TenantContextService` this phase is designed around.
+**Next up:** Phase 3 — Knowledge base CRUD + file upload & storage (see `docs/PHASES.md`).
 
 ## Environment quirks worth knowing (this specific machine/session)
 
