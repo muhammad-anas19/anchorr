@@ -28,7 +28,7 @@ describe('Workspace access control (e2e)', () => {
   });
 
   beforeEach(async () => {
-    await dataSource.query('TRUNCATE refresh_tokens, memberships, users, workspaces RESTART IDENTITY');
+    await dataSource.query('TRUNCATE documents, refresh_tokens, memberships, users, workspaces RESTART IDENTITY');
   });
 
   it('rejects an unauthenticated request to a workspace route', async () => {

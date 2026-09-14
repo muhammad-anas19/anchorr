@@ -6,8 +6,10 @@ import { Workspace } from './database/entities/workspace.entity';
 import { User } from './database/entities/user.entity';
 import { Membership } from './database/entities/membership.entity';
 import { RefreshToken } from './database/entities/refresh-token.entity';
+import { Document } from './database/entities/document.entity';
 import { AuthModule } from './modules/auth/auth.module';
 import { WorkspacesModule } from './modules/workspaces/workspaces.module';
+import { DocumentsModule } from './modules/documents/documents.module';
 
 @Module({
   imports: [
@@ -22,12 +24,13 @@ import { WorkspacesModule } from './modules/workspaces/workspaces.module';
         username: config.get<string>('DB_USERNAME'),
         password: config.get<string>('DB_PASSWORD'),
         database: config.get<string>('DB_NAME'),
-        entities: [Workspace, User, Membership, RefreshToken],
+        entities: [Workspace, User, Membership, RefreshToken, Document],
         synchronize: false,
       }),
     }),
     AuthModule,
     WorkspacesModule,
+    DocumentsModule,
   ],
   controllers: [AppController],
 })

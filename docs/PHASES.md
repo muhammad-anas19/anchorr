@@ -6,9 +6,9 @@
 
 | # | Phase | Status | Depends on | Key concepts introduced |
 |---|-------|--------|------------|--------------------------|
-| 1 | Multi-tenant schema foundation | IN PROGRESS — see `docs/phases/01-monorepo-multitenant-schema.md` | none | row-level multi-tenancy, TypeORM migrations vs `synchronize`, FK cascade behavior, indexing FK columns |
-| 2 | Auth & RBAC | PENDING | 1 | NestJS Guards, session/JWT auth, tenant-scoping enforcement (the guard the schema in Phase 1 was built for) |
-| 3 | Knowledge base CRUD + file upload & storage | PENDING | 2 | multipart upload handling, storage adapter interface |
+| 1 | Multi-tenant schema foundation | DONE — see `docs/phases/01-monorepo-multitenant-schema.md` | none | row-level multi-tenancy, TypeORM migrations vs `synchronize`, FK cascade behavior, indexing FK columns |
+| 2 | Auth & RBAC | DONE — see `docs/phases/02-auth-rbac.md` | 1 | NestJS Guards, session/JWT auth, tenant-scoping enforcement (the guard the schema in Phase 1 was built for) |
+| 3 | Knowledge base CRUD + file upload & storage | DONE — see `docs/phases/03-knowledge-base-file-upload.md` | 2 | multipart upload handling, storage adapter interface |
 | 4 | Background jobs with BullMQ | PENDING | 3 | Redis-backed job queues, producer/worker split, retries/backoff, idempotent handlers |
 | 5 | Document parsing & extraction pipeline | PENDING | 4 | PDF/DOCX text extraction inside a worker, failure-state design |
 | 6 | Chunking strategies | PENDING | 5 | heading-based vs fixed-token chunking, overlap |

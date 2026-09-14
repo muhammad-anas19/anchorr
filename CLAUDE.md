@@ -38,6 +38,7 @@ Objective and why the system needs it; the diagnostic (every question, the user'
 - Don't add dependencies outside the stack without asking.
 - Don't skip tests, even in an infra-only phase (Phase 1 added a real Jest integration test rather than relying only on manual `psql` checks).
 - Say "I don't know" rather than guessing.
+- **Within a phase, build `Backend/` first, then `Frontend/` if that phase actually needs a UI, then `Widget/` if that phase actually needs it** — never all three by default. Most early phases are backend-only (Phase 1, Phase 2 were); don't add Frontend/Widget work to a phase just because those folders exist — only when that phase's own objective calls for it. Requested explicitly by the user (2026-09-13); Phase 2 was deliberately left backend-only rather than retrofitted, per the user's own call when asked.
 
 ## Stack
 
@@ -91,7 +92,7 @@ Backend/src/
 
 **Phase 1 (multi-tenant schema foundation) — fully done.** Schema, migration, tests, diagnostic and closing quiz all complete — see `docs/phases/01-monorepo-multitenant-schema.md` for the full record. Carried-forward open items from Phase 1's closing quiz (the two-TypeORM-config split, NestJS's async DI resolution, `migration:revert`'s scope) got real, concrete exercise during Phase 2's build below — check Phase 2's closing quiz to see whether they actually stuck.
 
-**Phase 2 (Auth & RBAC) — built and tested, closing quiz posed but not yet answered.**
+**Phase 2 (Auth & RBAC) — fully done.**
 
 Done:
 - Full auth flow: `POST /auth/register` (creates `User` + `Workspace` + an `owner` `Membership`), `/auth/login`, `/auth/refresh` (rotates on every use, revokes the old token), `/auth/logout` (revokes). JWT access (15 min) + refresh (7 days) via `@nestjs/jwt` + `passport-jwt`. Passwords hashed with bcrypt (12 rounds); refresh tokens hashed with SHA-256 (deliberately not bcrypt — see the phase doc for why that's the *correct* choice here, not a shortcut).
@@ -105,7 +106,22 @@ Done:
 
 **Phase 2 closing quiz: answered and scored (2026-09-12).** Came back notably weaker than the opening diagnostic (0 SOLID / 3 SHAKY / 7 UNKNOWN, vs. 4/4/2 at the start) — several of these were things just built and demonstrated working hours earlier, which is real signal that "watched it work" and "can explain the mechanism" are different levels of understanding, not something to gloss over. Full Q&A, corrections, and a combined "Topics to master" list (7 items, ranked) are in `docs/phases/02-auth-rbac.md`. **Two topics are flagged as still critically weak going into Phase 3** and should get deliberate re-exposure rather than being assumed fixed: request-scoped DI / `ExecutionContext` (unresolved across *both* quizzes now), and the bcrypt-vs-SHA-256 entropy distinction (actually regressed between quizzes).
 
-**Next up:** Phase 3 — Knowledge base CRUD + file upload & storage (see `docs/PHASES.md`).
+**Phase 3 (Knowledge base CRUD + file upload & storage) — fully done.**
+
+Done:
+- `Document` entity + migration (`CreateDocuments`): `workspace_id` (FK, `CASCADE`), `uploaded_by_user_id` (FK, `SET NULL` — deliberately different from `Membership`/`RefreshToken`'s `CASCADE`, since a document belongs to the workspace, not the uploader), `original_filename` (display only), `storage_key` (a `randomUUID()`, never derived from user input), `mime_type` (sniffed, not client-declared), `content_hash` (SHA-256), `status` enum (`uploaded`/`processing`/`ready`/`failed` — only `uploaded` is used so far), `UNIQUE(workspace_id, content_hash)`.
+- `StorageAdapter` interface (`save`/`read`/`delete`) + `LocalDiskStorageAdapter`, swappable for S3 later via one new class and one line in `DocumentsModule`.
+- Magic-byte MIME sniffing (`mime-sniffer.ts`) — no new dependency; the client's declared `Content-Type` is never trusted, only the actual bytes.
+- `POST/GET/DELETE /workspaces/:workspaceId/documents[/:documentId]`, nested and guarded exactly like Phase 2's pattern (`JwtAuthGuard` → `WorkspaceGuard` → `RolesGuard`); upload/delete are Owner/Agent-only, list/get open to any member.
+- 50MB upload limit enforced by `multer` at ingestion (`413` before the handler runs, not after buffering).
+- Duplicate detection at two layers: an app-level pre-check (fast, friendly `409`) plus the `UNIQUE` DB constraint as the real backstop — **proven necessary, not theoretical**, by a concurrent-upload test (see below).
+- 7 test suites, 29 tests, all real (Postgres + Redis + actual filesystem, no mocks).
+- Full diagnostic (10 questions, 2 SOLID/6 SHAKY/2 UNKNOWN — notably, the same SQL/command-injection mixup recurred twice where the real answer was path traversal) documented in `docs/phases/03-knowledge-base-file-upload.md`.
+- **Two more real, unforced failures**, both directly relevant to Phase 2's still-flagged-weak topics: (1) `DocumentsModule` failed to boot because `WorkspaceGuard`'s transitive request-scope needs `Repository<Membership>` reconstructable within *whichever module is consuming the guard*, not just wherever it was declared — a live, concrete encounter with the exact DI-scope topic still marked weak. (2) The `TRUNCATE`-list bug from Phase 2 recurred a third time (a new referencing table broke three other test files' cleanup) — now three phases of evidence that a dedicated test database is overdue, not a one-off.
+
+**Phase 3 closing quiz: answered and scored (2026-09-14).** 3 SOLID / 3 SHAKY / 4 UNKNOWN. Two real wins (path traversal named cold, content-hash duplicate-detection reasoning solid), but `multipart/form-data`'s actual mechanism is now wrong for the *second* time in a *different* way (first: confused with resumable upload; now: confused with a security/verification mechanism) — this needs a different teaching approach next time, not a third prose explanation. One answer (on REST URL nesting) directly contradicted what `WorkspaceGuard`'s own code does — worth remembering that reasoning about API design in the abstract isn't a substitute for reading the actual guard. Full Q&A and a 6-item "Topics to master" list are in `docs/phases/03-*.md`. **Genuine cross-phase progress worth noting**: the request-scoped DI topic (flat UNKNOWN through all of Phase 2) moved to SHAKY this phase, via a real, unstaged encounter — not fully landed, but moving the right direction.
+
+**Next up:** Phase 4 — Background jobs with BullMQ (see `docs/PHASES.md`).
 
 ## Environment quirks worth knowing (this specific machine/session)
 
