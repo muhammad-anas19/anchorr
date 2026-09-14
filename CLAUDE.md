@@ -121,7 +121,20 @@ Done:
 
 **Phase 3 closing quiz: answered and scored (2026-09-14).** 3 SOLID / 3 SHAKY / 4 UNKNOWN. Two real wins (path traversal named cold, content-hash duplicate-detection reasoning solid), but `multipart/form-data`'s actual mechanism is now wrong for the *second* time in a *different* way (first: confused with resumable upload; now: confused with a security/verification mechanism) — this needs a different teaching approach next time, not a third prose explanation. One answer (on REST URL nesting) directly contradicted what `WorkspaceGuard`'s own code does — worth remembering that reasoning about API design in the abstract isn't a substitute for reading the actual guard. Full Q&A and a 6-item "Topics to master" list are in `docs/phases/03-*.md`. **Genuine cross-phase progress worth noting**: the request-scoped DI topic (flat UNKNOWN through all of Phase 2) moved to SHAKY this phase, via a real, unstaged encounter — not fully landed, but moving the right direction.
 
-**Next up:** Phase 4 — Background jobs with BullMQ (see `docs/PHASES.md`).
+**Phase 4 (Background jobs with BullMQ) — built and tested, closing quiz not yet posed.**
+
+Done:
+- `@nestjs/bullmq` + `bullmq`, sharing the existing Redis instance (`REDIS_HOST`/`REDIS_PORT` from `.env`, since Phase 2). `src/queue/queue.module.ts` holds only the shared connection config (top-level infra, same tier as `database/`/`redis/`); the actual queue + processor live in `src/modules/documents/processing/`.
+- `DocumentsService.upload()` now enqueues a `document-processing` job (`{ documentId }`, `attempts: 3`, exponential backoff) right after saving the row — enqueuing is fast and awaited, but the HTTP response goes out before any actual processing starts.
+- `DocumentProcessingProcessor`: idempotency-guarded (`ready`/`failed` → no-op), flips `uploaded → processing → ready`. No real parsing yet — that's Phases 5-7. On exhausted retries, `@OnWorkerEvent('failed')` sets `status: 'failed'` + `failureReason`.
+- Concurrency explicitly set to 5 (not left at BullMQ's silent default of 1). Worker runs in the same Node process as the API — a deliberate simplification, flagged for revisit once real processing (Phase 5+) has meaningful CPU/latency cost.
+- 8 test suites, 32 tests. Includes a forced-failure test that watches all 3 retry attempts actually exhaust (real backoff timers, not mocked) and lands on `status: 'failed'`, plus an idempotent-redelivery test.
+- **A live, non-automated demonstration of BullMQ's stall-detection mechanism**: two standalone workers, one made to hang (simulating a crash) and force-killed mid-job, the other picking up the stalled job once its lock expired. Real captured log output is in the phase doc's Failure Cases — this was deliberately *not* turned into a permanent test (killing real OS processes and waiting out real lock timers is slow/fragile for CI), just directly observed and documented once.
+- Full diagnostic (10 questions, 3 SOLID/3 SHAKY/4 UNKNOWN) documented in `docs/phases/04-background-jobs-bullmq.md`. Notably: at-least-once vs exactly-once got swapped (UNKNOWN) — worth watching, since idempotency (Q5) follows directly from getting that distinction right.
+
+**Phase 4 closing quiz: answered and scored (2026-09-14).** 2 SOLID / 3 SHAKY / 5 UNKNOWN. Notable and worth remembering: the stall-detection question (Q3) came back "don't know" *immediately* after watching it demonstrated live with real log output — the strongest signal yet in this project that watching something work and being able to explain it are genuinely different skills. Also confused two separate BullMQ timing mechanisms (retry backoff vs. stall detection/lock expiry) that "look similar" but protect against unrelated failure modes — flagged as the top thing to nail down before it causes real confusion in production. Full Q&A and a 5-item "Topics to master" list are in `docs/phases/04-*.md`. One genuine win: the at-least-once/exactly-once distinction, swapped in the opening diagnostic, came back correctly explained *and* correctly tied to why this project's idempotency guard is the practical fix — real, lasting improvement within a single phase.
+
+**Next up:** Phase 5 — Document parsing & extraction pipeline (see `docs/PHASES.md`).
 
 ## Environment quirks worth knowing (this specific machine/session)
 

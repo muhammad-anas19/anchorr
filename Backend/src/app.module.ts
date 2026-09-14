@@ -10,6 +10,7 @@ import { Document } from './database/entities/document.entity';
 import { AuthModule } from './modules/auth/auth.module';
 import { WorkspacesModule } from './modules/workspaces/workspaces.module';
 import { DocumentsModule } from './modules/documents/documents.module';
+import { QueueModule } from './queue/queue.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { DocumentsModule } from './modules/documents/documents.module';
         synchronize: false,
       }),
     }),
+    QueueModule,
     AuthModule,
     WorkspacesModule,
     DocumentsModule,

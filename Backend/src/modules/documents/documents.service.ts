@@ -1,11 +1,14 @@
 import { ConflictException, Inject, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { InjectQueue } from '@nestjs/bullmq';
 import { Repository } from 'typeorm';
+import { Queue } from 'bullmq';
 import { createHash, randomUUID } from 'crypto';
 import { Document } from '../../database/entities/document.entity';
 import { DocumentStatus } from '../../database/entities/document-status.enum';
 import { STORAGE_ADAPTER, StorageAdapter } from './storage/storage-adapter.interface';
 import { sniffMimeType } from './mime-sniffer';
+import { DOCUMENT_PROCESSING_QUEUE, DocumentProcessingJobData } from './processing/document-processing.constants';
 
 interface UploadedFileLike {
   buffer: Buffer;
@@ -19,6 +22,7 @@ export class DocumentsService {
   constructor(
     @InjectRepository(Document) private readonly documents: Repository<Document>,
     @Inject(STORAGE_ADAPTER) private readonly storage: StorageAdapter,
+    @InjectQueue(DOCUMENT_PROCESSING_QUEUE) private readonly processingQueue: Queue<DocumentProcessingJobData>,
   ) {}
 
   async upload(workspaceId: number, uploadedByUserId: number, file: UploadedFileLike): Promise<Document> {
@@ -37,8 +41,9 @@ export class DocumentsService {
     const storageKey = randomUUID();
     await this.storage.save(storageKey, file.buffer);
 
+    let document: Document;
     try {
-      return await this.documents.save({
+      document = await this.documents.save({
         workspaceId,
         uploadedByUserId,
         originalFilename: file.originalname,
@@ -55,6 +60,16 @@ export class DocumentsService {
       }
       throw error;
     }
+
+    // Enqueue only — this resolves as soon as the job is written to Redis, well before
+    // the worker actually picks it up. The HTTP response goes out with status "uploaded".
+    await this.processingQueue.add(
+      'process',
+      { documentId: document.id },
+      { attempts: 3, backoff: { type: 'exponential', delay: 1000 } },
+    );
+
+    return document;
   }
 
   listForWorkspace(workspaceId: number): Promise<Document[]> {
