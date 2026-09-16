@@ -14,7 +14,7 @@ describe('Workspace/User/Membership schema', () => {
   });
 
   beforeEach(async () => {
-    await AppDataSource.query('TRUNCATE documents, refresh_tokens, memberships, users, workspaces RESTART IDENTITY');
+    await AppDataSource.query('TRUNCATE document_contents, documents, refresh_tokens, memberships, users, workspaces RESTART IDENTITY');
   });
 
   it('rejects a duplicate membership for the same workspace and user', async () => {

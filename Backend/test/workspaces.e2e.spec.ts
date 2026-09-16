@@ -3,7 +3,7 @@ import { Test } from '@nestjs/testing';
 import { DataSource } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
 import * as jwt from 'jsonwebtoken';
-import * as request from 'supertest';
+import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { User } from '../src/database/entities/user.entity';
 import { Membership } from '../src/database/entities/membership.entity';
@@ -28,7 +28,7 @@ describe('Workspace access control (e2e)', () => {
   });
 
   beforeEach(async () => {
-    await dataSource.query('TRUNCATE documents, refresh_tokens, memberships, users, workspaces RESTART IDENTITY');
+    await dataSource.query('TRUNCATE document_contents, documents, refresh_tokens, memberships, users, workspaces RESTART IDENTITY');
   });
 
   it('rejects an unauthenticated request to a workspace route', async () => {

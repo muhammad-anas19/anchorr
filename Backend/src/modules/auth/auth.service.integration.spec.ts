@@ -36,7 +36,7 @@ describe('AuthService (integration)', () => {
   });
 
   beforeEach(async () => {
-    await AppDataSource.query('TRUNCATE documents, refresh_tokens, memberships, users, workspaces RESTART IDENTITY');
+    await AppDataSource.query('TRUNCATE document_contents, documents, refresh_tokens, memberships, users, workspaces RESTART IDENTITY');
   });
 
   it('registers a user, creates their workspace, and makes them owner', async () => {

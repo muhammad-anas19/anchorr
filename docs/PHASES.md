@@ -10,7 +10,7 @@
 | 2 | Auth & RBAC | DONE — see `docs/phases/02-auth-rbac.md` | 1 | NestJS Guards, session/JWT auth, tenant-scoping enforcement (the guard the schema in Phase 1 was built for) |
 | 3 | Knowledge base CRUD + file upload & storage | DONE — see `docs/phases/03-knowledge-base-file-upload.md` | 2 | multipart upload handling, storage adapter interface |
 | 4 | Background jobs with BullMQ | DONE — see `docs/phases/04-background-jobs-bullmq.md` | 3 | Redis-backed job queues, producer/worker split, retries/backoff, idempotent handlers |
-| 5 | Document parsing & extraction pipeline | PENDING | 4 | PDF/DOCX text extraction inside a worker, failure-state design |
+| 5 | Document parsing & extraction pipeline | IN PROGRESS (built + tested, closing quiz pending) — see `docs/phases/05-document-parsing-extraction.md` | 4 | PDF/DOCX text extraction inside a worker, failure-state design |
 | 6 | Chunking strategies | PENDING | 5 | heading-based vs fixed-token chunking, overlap |
 | 7 | Embeddings & pgvector storage | PENDING | 6 | embedding generation (Gemini), pgvector column type, ANN indexing |
 | 8 | Vector similarity search (retrieval v1) | PENDING | 7 | query-time embedding, k-NN search |

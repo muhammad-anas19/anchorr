@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BullModule } from '@nestjs/bullmq';
 import { Document } from '../../database/entities/document.entity';
+import { DocumentContent } from '../../database/entities/document-content.entity';
 import { Membership } from '../../database/entities/membership.entity';
 import { TenancyModule } from '../tenancy/tenancy.module';
 import { DocumentsController } from './documents.controller';
@@ -16,7 +17,7 @@ import { DocumentProcessingProcessor } from './processing/document-processing.pr
   // is transitively request-scoped (it depends on TenantContextService) — Nest rebuilds its whole
   // dependency chain fresh per request, from whichever module is actually consuming the guard.
   imports: [
-    TypeOrmModule.forFeature([Document, Membership]),
+    TypeOrmModule.forFeature([Document, DocumentContent, Membership]),
     TenancyModule,
     BullModule.registerQueue({ name: DOCUMENT_PROCESSING_QUEUE }),
   ],

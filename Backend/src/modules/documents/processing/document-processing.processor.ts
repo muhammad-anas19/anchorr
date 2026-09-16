@@ -1,17 +1,27 @@
-import { Logger } from '@nestjs/common';
+import { Inject, Logger } from '@nestjs/common';
 import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Job } from 'bullmq';
 import { Document } from '../../../database/entities/document.entity';
+import { DocumentContent } from '../../../database/entities/document-content.entity';
 import { DocumentStatus } from '../../../database/entities/document-status.enum';
 import { DOCUMENT_PROCESSING_QUEUE, DocumentProcessingJobData } from './document-processing.constants';
+import { STORAGE_ADAPTER, StorageAdapter } from '../storage/storage-adapter.interface';
+import { extractText, isEffectivelyEmpty } from './extraction/extraction';
+
+const EMPTY_TEXT_FAILURE_REASON =
+  'No extractable text was found — the file may be a scan or image-only document.';
 
 @Processor(DOCUMENT_PROCESSING_QUEUE, { concurrency: 5 })
 export class DocumentProcessingProcessor extends WorkerHost {
   private readonly logger = new Logger(DocumentProcessingProcessor.name);
 
-  constructor(@InjectRepository(Document) private readonly documents: Repository<Document>) {
+  constructor(
+    @InjectRepository(Document) private readonly documents: Repository<Document>,
+    @InjectRepository(DocumentContent) private readonly documentContents: Repository<DocumentContent>,
+    @Inject(STORAGE_ADAPTER) private readonly storage: StorageAdapter,
+  ) {
     super();
   }
 
@@ -33,13 +43,30 @@ export class DocumentProcessingProcessor extends WorkerHost {
 
     await this.documents.update(documentId, { status: DocumentStatus.PROCESSING });
 
-    // Trivial placeholder for real work — parsing/chunking/embedding arrive in Phases 5-7.
-    // A THROW_FOR_TESTING flag on the job data lets tests deliberately force a failure
-    // to exercise the retry/backoff/exhaustion path without needing real broken input.
+    // A THROW_FOR_TESTING flag on the job data lets tests deliberately force a genuine
+    // error, to exercise the retry/backoff/exhaustion path without needing real broken input.
     if ((job.data as DocumentProcessingJobData & { throwForTesting?: boolean }).throwForTesting) {
       throw new Error('Deliberate failure for testing retry/backoff behavior.');
     }
 
+    const buffer = await this.storage.read(document.storageKey);
+    const { text, pageCount } = await extractText(buffer, document.mimeType);
+
+    if (isEffectivelyEmpty(text)) {
+      // Deterministic, non-retryable outcome: this file will never produce text no matter
+      // how many more attempts run, so we set failed directly rather than throwing — a
+      // throw here would waste two more retries on the exact same guaranteed-empty result.
+      await this.documents.update(documentId, {
+        status: DocumentStatus.FAILED,
+        failureReason: EMPTY_TEXT_FAILURE_REASON,
+      });
+      return;
+    }
+
+    // upsert (not insert) on the document_id conflict target: if a previous attempt already
+    // wrote this row but crashed before the status update below, re-running lands on the
+    // same final state instead of throwing a duplicate-key error on the UNIQUE constraint.
+    await this.documentContents.upsert({ documentId, extractedText: text, pageCount }, ['documentId']);
     await this.documents.update(documentId, { status: DocumentStatus.READY });
   }
 

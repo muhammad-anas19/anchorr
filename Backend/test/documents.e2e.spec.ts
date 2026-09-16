@@ -2,7 +2,7 @@ import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { DataSource } from 'typeorm';
 import * as jwt from 'jsonwebtoken';
-import * as request from 'supertest';
+import request from 'supertest';
 import { rm, readdir } from 'fs/promises';
 import { join } from 'path';
 import { AppModule } from '../src/app.module';
@@ -32,7 +32,7 @@ describe('Documents (e2e)', () => {
   });
 
   beforeEach(async () => {
-    await dataSource.query('TRUNCATE documents, refresh_tokens, memberships, users, workspaces RESTART IDENTITY');
+    await dataSource.query('TRUNCATE document_contents, documents, refresh_tokens, memberships, users, workspaces RESTART IDENTITY');
     await rm(STORAGE_DIR, { recursive: true, force: true });
   });
 
