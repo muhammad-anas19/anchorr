@@ -360,3 +360,63 @@ Concrete side-by-side, from the actual code in this phase: `this.documents.updat
 **Q6 — trace through the exact crash this protects against, using this phase's real code.** Attempt #1 of a job: extraction succeeds, `documentContents.insert(...)` runs and a real row appears in `document_contents`. Then, right before the *next* line (`this.documents.update(documentId, { status: 'ready' })`), the whole process crashes — power loss, an out-of-memory kill, doesn't matter. From BullMQ's point of view, this job never called back to say "done," so once its lock expires it gets redelivered — attempt #2 starts.
 
 Attempt #2 passes the idempotency guard (status is still `'processing'`, not `'ready'`/`'failed'`), so it runs extraction again (wasteful, but not wrong) and reaches the same "save the content" line. **If that line were a plain `insert`**, it would hit the `UNIQUE(document_id)` constraint left behind by attempt #1's already-saved row and throw a duplicate-key error — turning a document that's actually *fine* (its content really did get saved) into one that looks broken. Because the real code uses `upsert` instead, attempt #2's write just overwrites attempt #1's identical values with no error, execution reaches the `status: 'ready'` line this time, and the document correctly ends up `ready` — exactly once, no matter how many attempts it actually took.
+
+**Re-ask status: left unanswered, by explicit user choice (2026-09-17).** The three re-taught questions above were posed but not answered — the user chose to move directly to Phase 6 instead. Flagged once per the project's standing rule (never silently proceed past a state the protocol calls incomplete without saying so), then respected as the user's call, consistent with how every other locked decision in this project has worked. **Net effect: Phase 5 closes with 9 of 10 closing-quiz topics still at UNKNOWN, unusually weak even by this project's own pattern (compare Phase 2's 0/3/7 or Phase 4's 2/3/5) — carried forward as open debt, not resolved.** In particular, Q4 (`job.updateProgress()`'s Redis-only, non-durable scope) produced the *identical* wrong answer across three separate exposures now (opening diagnostic → closing quiz → still unaddressed at the re-ask) and should be treated as a standing weak spot the moment BullMQ progress reporting becomes relevant again (Phase 12's real-time work is the likely next trigger), not assumed fixed by this phase's teaching.
+
+---
+
+## Topics to master
+
+Combining both the opening diagnostic (10/10 UNKNOWN) and the closing quiz (0 SOLID / 1 SHAKY / 9 UNKNOWN), ranked by how load-bearing each is across backend engineering generally — not by how badly each was missed here, though in this phase's case that ordering ends up nearly the same.
+
+### 1. Binary/structured file format internals (why "the bytes are valid" ≠ "the content is text")
+**Search:** "PDF file format internals content stream", "OOXML file format DOCX structure", "how does pdf.js extract text from PDF"
+**Exposed by:** Q1 and Q2, both times, both quizzes.
+High-leverage because it's the specific instance of a much bigger idea: almost every "we can't parse this file" bug in a real backend traces back to a wrong mental model of what a file format actually *is* at the byte level, not a library bug. Engineers who reach for "let's just try a different library" without first asking "what does this format actually store, structurally" burn enormous time on problems a five-minute spec skim would have prevented.
+
+### 2. Durable storage vs. ephemeral/in-memory bookkeeping (Postgres vs. Redis as a design axis, not just "two databases")
+**Search:** "Redis vs Postgres use cases", "what data belongs in Redis", "BullMQ job progress persistence"
+**Exposed by:** Q4, in the opening diagnostic, the closing quiz, and again at the re-ask — the single most consistent gap in this entire phase, unmoved by two dedicated teaching passes.
+Genuinely one of the highest-leverage distinctions in backend systems generally: knowing *by design*, not by memorization, which category a given piece of state belongs in (would losing this on a restart be catastrophic, or shrug-worthy?) is the difference between an engineer who reaches for the right tool reflexively and one who has to look it up every time. This is flagged as unresolved going into Phase 6 and should get deliberate, concrete re-exposure the next time BullMQ progress or any Redis-resident state comes up — not assumed fixed.
+
+### 3. Idempotent writes via upsert (making a retry safe by construction, not by hoping)
+**Search:** "upsert vs insert idempotency", "postgres ON CONFLICT DO UPDATE", "idempotent job processing patterns"
+**Exposed by:** Q6, both quizzes.
+Retried work is a fact of life in any system with queues, webhooks, or at-least-once delivery (which is most real systems) — the pattern of "make the *write itself* safe to repeat" rather than relying on an application-level guard alone is a core, transferable resilience technique, and the specific failure mode it prevents (a correct write getting reported as a spurious failure) is exactly the kind of bug that's brutal to reproduce in production and easy to prevent at design time.
+
+### 4. Distinguishing genuine (retryable) errors from deterministic (non-retryable) outcomes
+**Search:** "retryable vs non-retryable errors", "when not to retry a failed job", "error classification in distributed systems"
+**Exposed by:** Q5 and Q7, both quizzes.
+A huge fraction of "why does this job keep retrying forever and burning resources" incidents in real systems trace back to not having made this distinction on purpose. Treating every failure as equally retry-worthy is a default that quietly costs money and time (three wasted attempts on a file that will *never* succeed) the moment real traffic hits a system that does any kind of processing pipeline — chunking, embeddings, and payment webhooks in this very project will all face the identical design question again.
+
+### 5. Content-quality heuristics and where to set their thresholds deliberately
+**Search:** "text quality heuristic extraction", "handling malformed extracted text", "OCR confidence threshold"
+**Exposed by:** Q3 and Q10, both quizzes.
+"Did this succeed" is rarely a clean boolean in any pipeline that touches real-world, messy input (parsing, OCR, ML inference, user-submitted data) — recognizing when a problem is actually "pick a defensible threshold and monitor it" rather than "find the one correct answer" is a mindset shift that saves enormous wasted effort chasing false precision.
+
+### 6. Security surface introduced by parsing (decompression bombs, XML entity expansion)
+**Search:** "zip bomb protection", "XML entity expansion attack XXE billion laughs", "safe file parsing untrusted input"
+**Exposed by:** Q8, both quizzes.
+File-upload validation (MIME/magic-byte checks) and file-*parsing* safety are two genuinely separate security surfaces — a file passing the first tells you nothing about the second. Any system that accepts user-uploaded documents, images, or archives and then actually opens/parses them needs both, and conflating them is a common, real vulnerability class.
+
+### 7. Isolating whether a failing test reflects a real bug or a test-environment artifact
+**Search:** "jest module resolution issues", "flaky test root cause analysis", "test environment vs production parity"
+**Exposed by:** Q9, this phase's live debugging session.
+The instinct to keep "fixing" application code until a red test goes green, without first confirming the code is actually wrong (versus the *test's own environment* behaving differently from production), is a trap that wastes huge amounts of time and can introduce real workarounds for imaginary problems. The discipline demonstrated in this phase's own debugging — testing the identical code path both inside and outside the suspect environment before touching application code — is the transferable skill, independent of the specific (and genuinely obscure) Jest/BullMQ interaction that triggered it here.
+
+---
+
+## Interview questions this phase generates
+
+- "Walk me through why a PDF can be perfectly valid and still have no extractable text." (Q1)
+- "You're building a document-processing pipeline. A job fails halfway through — how do you decide whether it should retry or fail permanently?" (Q5/Q7)
+- "What's the difference between an upsert and an insert-then-update, and when does that difference actually matter?" (Q6)
+- "Where would you store job progress in a queue-based system, and would it survive a Redis restart?" (Q4)
+- "A test fails in CI but the code works fine when you run it manually. How do you figure out whether the test or the code is wrong?" (Q9)
+- "What security risks exist specifically in *parsing* a file, that validating its type/magic bytes doesn't catch?" (Q8)
+
+---
+
+## What's still not understood
+
+Per the closing quiz and the explicit choice to move on without answering the re-ask: **the large majority of this phase's core concepts remain at UNKNOWN**, most notably where BullMQ job state lives and why (Q4, unmoved across three exposures), the retryable-vs-deterministic error distinction (Q5/Q7), and the upsert-based idempotency mechanism this phase's own code actually implements (Q6). This is carried forward openly rather than assumed resolved — see "Topics to master" above and the re-ask status note in the closing quiz section. Phase 6 (chunking) doesn't structurally depend on these gaps closing first, but Phase 7 (embeddings, real API cost per call) and Phase 12 (real-time progress) both will — worth a deliberate re-check at whichever comes first.

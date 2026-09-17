@@ -8,6 +8,7 @@ import { Membership } from './database/entities/membership.entity';
 import { RefreshToken } from './database/entities/refresh-token.entity';
 import { Document } from './database/entities/document.entity';
 import { DocumentContent } from './database/entities/document-content.entity';
+import { DocumentChunk } from './database/entities/document-chunk.entity';
 import { AuthModule } from './modules/auth/auth.module';
 import { WorkspacesModule } from './modules/workspaces/workspaces.module';
 import { DocumentsModule } from './modules/documents/documents.module';
@@ -26,7 +27,7 @@ import { QueueModule } from './queue/queue.module';
         username: config.get<string>('DB_USERNAME'),
         password: config.get<string>('DB_PASSWORD'),
         database: config.get<string>('DB_NAME'),
-        entities: [Workspace, User, Membership, RefreshToken, Document, DocumentContent],
+        entities: [Workspace, User, Membership, RefreshToken, Document, DocumentContent, DocumentChunk],
         synchronize: false,
       }),
     }),

@@ -7,6 +7,7 @@ import { Membership } from './entities/membership.entity';
 import { RefreshToken } from './entities/refresh-token.entity';
 import { Document } from './entities/document.entity';
 import { DocumentContent } from './entities/document-content.entity';
+import { DocumentChunk } from './entities/document-chunk.entity';
 
 config();
 
@@ -17,7 +18,7 @@ export const AppDataSource = new DataSource({
   username: process.env.DB_USERNAME,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
-  entities: [Workspace, User, Membership, RefreshToken, Document, DocumentContent],
+  entities: [Workspace, User, Membership, RefreshToken, Document, DocumentContent, DocumentChunk],
   migrations: ['src/database/migrations/*.ts'],
   synchronize: false,
 });

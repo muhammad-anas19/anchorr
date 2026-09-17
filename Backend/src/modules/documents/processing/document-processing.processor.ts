@@ -1,14 +1,16 @@
 import { Inject, Logger } from '@nestjs/common';
 import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { Job } from 'bullmq';
 import { Document } from '../../../database/entities/document.entity';
 import { DocumentContent } from '../../../database/entities/document-content.entity';
+import { DocumentChunk } from '../../../database/entities/document-chunk.entity';
 import { DocumentStatus } from '../../../database/entities/document-status.enum';
 import { DOCUMENT_PROCESSING_QUEUE, DocumentProcessingJobData } from './document-processing.constants';
 import { STORAGE_ADAPTER, StorageAdapter } from '../storage/storage-adapter.interface';
 import { extractText, isEffectivelyEmpty } from './extraction/extraction';
+import { chunkText } from './chunking/chunking';
 
 const EMPTY_TEXT_FAILURE_REASON =
   'No extractable text was found — the file may be a scan or image-only document.';
@@ -21,6 +23,7 @@ export class DocumentProcessingProcessor extends WorkerHost {
     @InjectRepository(Document) private readonly documents: Repository<Document>,
     @InjectRepository(DocumentContent) private readonly documentContents: Repository<DocumentContent>,
     @Inject(STORAGE_ADAPTER) private readonly storage: StorageAdapter,
+    @InjectDataSource() private readonly dataSource: DataSource,
   ) {
     super();
   }
@@ -67,6 +70,27 @@ export class DocumentProcessingProcessor extends WorkerHost {
     // wrote this row but crashed before the status update below, re-running lands on the
     // same final state instead of throwing a duplicate-key error on the UNIQUE constraint.
     await this.documentContents.upsert({ documentId, extractedText: text, pageCount }, ['documentId']);
+
+    const chunks = chunkText(text);
+    // Delete-then-insert, not upsert: a document can have a different NUMBER of chunks on
+    // a re-run than it had before (a previous partial attempt, or an improved chunking
+    // algorithm re-run later), so a per-row upsert alone could leave stale extra rows
+    // behind. Both statements run in one transaction so a crash between them can never
+    // leave a document with no chunks at all.
+    await this.dataSource.transaction(async (manager) => {
+      await manager.delete(DocumentChunk, { documentId });
+      await manager.insert(
+        DocumentChunk,
+        chunks.map((chunk, index) => ({
+          documentId,
+          chunkIndex: index,
+          content: chunk.content,
+          charStart: chunk.charStart,
+          charEnd: chunk.charEnd,
+        })),
+      );
+    });
+
     await this.documents.update(documentId, { status: DocumentStatus.READY });
   }
 
