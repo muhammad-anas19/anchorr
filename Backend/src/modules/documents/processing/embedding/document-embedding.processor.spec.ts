@@ -6,7 +6,7 @@ import { Document } from '../../../../database/entities/document.entity';
 import { DocumentChunk } from '../../../../database/entities/document-chunk.entity';
 import { DocumentStatus } from '../../../../database/entities/document-status.enum';
 import { DocumentEmbeddingProcessor } from './document-embedding.processor';
-import { EmbeddingProvider } from './embedding-provider.interface';
+import { EmbeddingProvider } from '../../../../embedding/embedding-provider.interface';
 import { Job } from 'bullmq';
 import { DocumentEmbeddingJobData } from './document-embedding.constants';
 

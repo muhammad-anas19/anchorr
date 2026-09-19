@@ -14,8 +14,7 @@ import { DOCUMENT_PROCESSING_QUEUE } from './processing/document-processing.cons
 import { DocumentProcessingProcessor } from './processing/document-processing.processor';
 import { DOCUMENT_EMBEDDING_QUEUE } from './processing/embedding/document-embedding.constants';
 import { DocumentEmbeddingProcessor } from './processing/embedding/document-embedding.processor';
-import { EMBEDDING_PROVIDER } from './processing/embedding/embedding-provider.interface';
-import { GeminiEmbeddingProvider } from './processing/embedding/gemini-embedding.provider';
+import { EmbeddingModule } from '../../embedding/embedding.module';
 
 @Module({
   // Membership must be imported here too (not just inside TenancyModule) because WorkspaceGuard
@@ -24,6 +23,7 @@ import { GeminiEmbeddingProvider } from './processing/embedding/gemini-embedding
   imports: [
     TypeOrmModule.forFeature([Document, DocumentContent, DocumentChunk, Membership]),
     TenancyModule,
+    EmbeddingModule,
     BullModule.registerQueue({ name: DOCUMENT_PROCESSING_QUEUE }, { name: DOCUMENT_EMBEDDING_QUEUE }),
   ],
   controllers: [DocumentsController],
@@ -32,7 +32,6 @@ import { GeminiEmbeddingProvider } from './processing/embedding/gemini-embedding
     DocumentProcessingProcessor,
     DocumentEmbeddingProcessor,
     { provide: STORAGE_ADAPTER, useClass: LocalDiskStorageAdapter },
-    { provide: EMBEDDING_PROVIDER, useClass: GeminiEmbeddingProvider },
   ],
 })
 export class DocumentsModule {}

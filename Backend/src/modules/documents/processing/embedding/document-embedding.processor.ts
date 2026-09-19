@@ -6,7 +6,7 @@ import { Job } from 'bullmq';
 import { Document } from '../../../../database/entities/document.entity';
 import { DocumentChunk } from '../../../../database/entities/document-chunk.entity';
 import { DocumentStatus } from '../../../../database/entities/document-status.enum';
-import { EMBEDDING_PROVIDER, EmbeddingProvider } from './embedding-provider.interface';
+import { EMBEDDING_PROVIDER, EmbeddingProvider } from '../../../../embedding/embedding-provider.interface';
 import { DOCUMENT_EMBEDDING_QUEUE, DocumentEmbeddingJobData } from './document-embedding.constants';
 
 @Processor(DOCUMENT_EMBEDDING_QUEUE, { concurrency: 5 })

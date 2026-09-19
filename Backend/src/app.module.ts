@@ -12,6 +12,7 @@ import { DocumentChunk } from './database/entities/document-chunk.entity';
 import { AuthModule } from './modules/auth/auth.module';
 import { WorkspacesModule } from './modules/workspaces/workspaces.module';
 import { DocumentsModule } from './modules/documents/documents.module';
+import { RetrievalModule } from './modules/retrieval/retrieval.module';
 import { QueueModule } from './queue/queue.module';
 
 @Module({
@@ -35,6 +36,7 @@ import { QueueModule } from './queue/queue.module';
     AuthModule,
     WorkspacesModule,
     DocumentsModule,
+    RetrievalModule,
   ],
   controllers: [AppController],
 })
