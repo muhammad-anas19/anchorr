@@ -4,3 +4,27 @@ services:
     restart: unless-stopped
     ports:
       - "6380:6379"
+
+  # Separate from the native Windows Postgres install on 5432 — this one exists purely to
+  # provide pgvector (not available on the native install without compiling it with MSVC,
+  # which we deliberately avoided). Anchor's whole database lives here now; the native
+  # instance is untouched and free for other, unrelated local projects.
+  postgres:
+    image: pgvector/pgvector:pg18
+    container_name: anchor-postgres
+    restart: unless-stopped
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_DB: anchor
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: mypostgres
+    volumes:
+      # Postgres 18+'s official images changed convention: the mount point is the parent
+      # /var/lib/postgresql directory now, not .../data — the image places version-specific
+      # data underneath it itself. Mounting at .../data (the pre-18 convention) makes the
+      # image refuse to start.
+      - anchor_postgres_data:/var/lib/postgresql
+
+volumes:
+  anchor_postgres_data:

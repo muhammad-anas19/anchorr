@@ -4,26 +4,25 @@
 
 - Node.js 20+ (repo tested against Node 24)
 - npm (bundled with Node) — **not pnpm**, see `docs/phases/01-*.md` for why that switch happened
-- A local PostgreSQL 16 instance with the **pgvector** extension available (see "Postgres" below — this project uses a native install managed via pgAdmin, not Docker)
-- Docker Desktop, for Redis only
+- Docker Desktop — runs both Redis and Anchor's own Postgres (see "Postgres" below)
 
 ## Postgres
 
-Postgres runs **natively on the machine**, not in Docker (a deliberate choice — see `docs/phases/01-*.md`, "Package manager & Postgres hosting"). Whoever sets this up needs:
-
-1. A running Postgres 16+ instance (managed however you like — pgAdmin is what's in use here).
-2. A database for Anchor (e.g. `anchor`) and a role with a password, with privileges on that database.
-3. **The `pgvector` extension's files physically installed** for that Postgres install — this is different from just running `CREATE EXTENSION`, which only works if the extension is already present on disk. On Windows this typically means a prebuilt `vector.dll`/`vector.control` matching the exact Postgres version, or compiling it with Visual Studio Build Tools. Confirm this before Phase 7 (embeddings) at the latest — Phase 1's migration already tries `CREATE EXTENSION IF NOT EXISTS vector;` and will fail if it's missing.
-
-Once you have connection details, fill them into `Backend/.env` (see below) and run the migrations.
-
-## Redis
+**Revised in Phase 7** — Anchor's database now runs in Docker, not on a native install. (Phases 1-6 used a native Postgres via pgAdmin; that reversed once `pgvector` was needed — see `docs/phases/07-*.md` for the full reasoning. If this machine also has a native Postgres installed for other, unrelated projects, it's untouched and still on port 5432 — Anchor no longer uses it.)
 
 ```
 docker compose up -d
 ```
 
-from the repo root brings up Redis on `localhost:6380` (not the default `6379` — see the phase 1 doc for why: an unrelated project's Redis container was already using it on this machine).
+from the repo root brings up **both** Redis (`localhost:6380`) and Anchor's Postgres (`localhost:5433`, image `pgvector/pgvector:pg18`, container `anchor-postgres`) — pgvector is already built into that image, no manual extension install needed. Data persists in the named volume `anchor_postgres_data`; `docker compose down -v` fully resets it (safe in dev — nothing here is meant to be durable).
+
+To connect from pgAdmin (or any client) directly: host `localhost`, port `5433`, database `anchor`, user `postgres`, password `mypostgres` (see `Backend/.env`, which already points here).
+
+Once the container is up, fill `Backend/.env` (see below) and run the migrations.
+
+## Redis
+
+Brought up by the same `docker compose up -d` above, on `localhost:6380` (not the default `6379` — see the phase 1 doc for why: an unrelated project's Redis container was already using it on this machine).
 
 ## Backend
 
@@ -36,9 +35,9 @@ Create `Backend/.env`:
 
 ```
 DB_HOST=localhost
-DB_PORT=5432
-DB_USERNAME=<your Postgres role>
-DB_PASSWORD=<your Postgres password>
+DB_PORT=5433
+DB_USERNAME=postgres
+DB_PASSWORD=mypostgres
 DB_NAME=anchor
 ```
 

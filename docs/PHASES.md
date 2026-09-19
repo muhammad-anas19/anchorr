@@ -12,8 +12,8 @@
 | 4 | Background jobs with BullMQ | DONE — see `docs/phases/04-background-jobs-bullmq.md` | 3 | Redis-backed job queues, producer/worker split, retries/backoff, idempotent handlers |
 | 5 | Document parsing & extraction pipeline | DONE (closed by user choice with 3 topics left UNKNOWN — see phase doc) — see `docs/phases/05-document-parsing-extraction.md` | 4 | PDF/DOCX text extraction inside a worker, failure-state design |
 | 6 | Chunking strategies | DONE | 5 | heading-based vs fixed-token chunking, overlap |
-| 7 | Embeddings & pgvector storage | IN PROGRESS | 6 | embedding generation (Gemini), pgvector column type, ANN indexing |
-| 8 | Vector similarity search (retrieval v1) | PENDING | 7 | query-time embedding, k-NN search |
+| 7 | Embeddings & pgvector storage | DONE | 6 | embedding generation (Gemini), pgvector column type, ANN indexing |
+| 8 | Vector similarity search (retrieval v1) | IN PROGRESS | 7 | query-time embedding, k-NN search |
 | 9 | LLM provider interface & grounded answer generation | PENDING | 8 | provider abstraction design, RAG prompt assembly, citation attribution |
 | 10 | Confidence scoring, refusal & escalation state machine | PENDING | 9 | retrieval-based confidence threshold, Conversation state machine |
 | 11 | Public widget + real-time chat | PENDING | 2, 10 | WebSockets (Socket.IO), public API key + domain allowlist, separate widget build target. **Also where the Phase 1 auto-increment-PK decision needs revisiting for externally-exposed IDs.** |

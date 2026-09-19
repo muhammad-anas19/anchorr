@@ -1,8 +1,8 @@
 import { Inject, Logger } from '@nestjs/common';
-import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
+import { InjectQueue, OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
-import { Job } from 'bullmq';
+import { Job, Queue } from 'bullmq';
 import { Document } from '../../../database/entities/document.entity';
 import { DocumentContent } from '../../../database/entities/document-content.entity';
 import { DocumentChunk } from '../../../database/entities/document-chunk.entity';
@@ -11,6 +11,7 @@ import { DOCUMENT_PROCESSING_QUEUE, DocumentProcessingJobData } from './document
 import { STORAGE_ADAPTER, StorageAdapter } from '../storage/storage-adapter.interface';
 import { extractText, isEffectivelyEmpty } from './extraction/extraction';
 import { chunkText } from './chunking/chunking';
+import { DOCUMENT_EMBEDDING_QUEUE, DocumentEmbeddingJobData } from './embedding/document-embedding.constants';
 
 const EMPTY_TEXT_FAILURE_REASON =
   'No extractable text was found — the file may be a scan or image-only document.';
@@ -24,6 +25,7 @@ export class DocumentProcessingProcessor extends WorkerHost {
     @InjectRepository(DocumentContent) private readonly documentContents: Repository<DocumentContent>,
     @Inject(STORAGE_ADAPTER) private readonly storage: StorageAdapter,
     @InjectDataSource() private readonly dataSource: DataSource,
+    @InjectQueue(DOCUMENT_EMBEDDING_QUEUE) private readonly embeddingQueue: Queue<DocumentEmbeddingJobData>,
   ) {
     super();
   }
@@ -91,7 +93,11 @@ export class DocumentProcessingProcessor extends WorkerHost {
       );
     });
 
-    await this.documents.update(documentId, { status: DocumentStatus.READY });
+    // Status deliberately stays 'processing' here, not 'ready' — a document isn't actually
+    // usable for retrieval (Phase 8) until every chunk has an embedding too. The embedding
+    // job (a genuinely separate stage: a paid, rate-limited external API call, unlike the
+    // free local work above) is what flips it to 'ready', once it actually earns that.
+    await this.embeddingQueue.add('embed', { documentId });
   }
 
   @OnWorkerEvent('failed')

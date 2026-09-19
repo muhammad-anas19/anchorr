@@ -36,6 +36,12 @@ export class DocumentChunk {
   @Column({ name: 'char_end', type: 'integer' })
   charEnd: number;
 
+  // Nullable: a chunk exists (from Phase 6) before it has an embedding (Phase 7) — a chunk
+  // row's lifecycle is "created without one, then filled in once Gemini's embedding API
+  // call for it succeeds." 768 matches Gemini's text embedding model's output dimension.
+  @Column({ type: 'vector', length: 768, nullable: true })
+  embedding: number[] | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 }
