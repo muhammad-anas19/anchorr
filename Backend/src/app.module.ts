@@ -13,6 +13,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { WorkspacesModule } from './modules/workspaces/workspaces.module';
 import { DocumentsModule } from './modules/documents/documents.module';
 import { RetrievalModule } from './modules/retrieval/retrieval.module';
+import { AnswerModule } from './modules/answer/answer.module';
 import { QueueModule } from './queue/queue.module';
 
 @Module({
@@ -37,6 +38,7 @@ import { QueueModule } from './queue/queue.module';
     WorkspacesModule,
     DocumentsModule,
     RetrievalModule,
+    AnswerModule,
   ],
   controllers: [AppController],
 })

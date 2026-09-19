@@ -190,7 +190,20 @@ Done:
 
 **Phase 8 closing quiz: answered and scored (2026-09-20).** Came back at **3 SOLID / 0 SHAKY / 5 UNKNOWN**. Real wins: the `<=>`-as-approximate-closeness reasoning (Q1, a direct callback to Phase 7's equality-check lesson landing correctly in a new context), the synchronous-vs-queue reasoning (Q5), and correctly identifying *and correctly applying* the actual shared-infra relocation rule to a hypothetical `StorageAdapter` case (Q7). **A real pattern worth carrying forward, not just three isolated gaps:** three separate UNKNOWNs (a sequential scan instead of the real HNSW index, an empty result array, an unused-but-real index) all trace back to the same instinct — reaching for "something is broken" instead of asking "is this actually wrong, or just not what I expected." Full Q&A, a 4-item "Topics to master" list, and this pattern's writeup are in `docs/phases/08-*.md`.
 
-**Next up:** Phase 9 — LLM provider interface & grounded answer generation (see `docs/PHASES.md`).
+**Phase 9 (LLM provider interface & grounded answer generation) — built and tested, closing quiz not yet posed.**
+
+Done:
+- New `src/generation/` module (sibling to `src/embedding/`, not merged into it): `AnswerGenerationProvider` interface (`generate(systemPrompt, userMessage, options?): Promise<string>`, matching Gemini's real `systemInstruction`/`contents` split rather than a generic messages array) + `GeminiAnswerGenerationProvider`. `temperature: 0.2` by default (a deliberate low-variance choice for factual answers, not the SDK's default).
+- Same model-discovery lesson as Phase 7, recurring: `gemini-2.5-flash` (the name in the SDK's own docs) returned a real 404 — *"no longer available to new users... use models/gemini-3.6-flash"*. Used the API's own suggested replacement.
+- New `modules/answer/` — `AnswerService.answer(workspaceId, question)` orchestrates retrieval (Phase 8) → empty-result short-circuit (never calls the LLM with no context) → numbered-context prompt assembly → real Gemini generation call → regex-based `[n]` citation parsing, resolved back against Phase 8's own chunk metadata. `POST /workspaces/:workspaceId/ask`, guarded the standard way.
+- **Grounding proven with a real adversarial test, not assumed**: given office-hours context and asked "What is the capital of France?" (something the model obviously knows from training), the real API call correctly refused and returned the configured fallback phrase.
+- Two real, deliberately-triggered "break it" results: a model citing a nonexistent chunk number (`[7]` when only one chunk existed) is silently dropped, not a crash; a real generation-provider failure surfaces as a genuine, immediate `500` — no retry, no queue, no silent fallback, unlike every background-job phase before this one.
+- Full test suite: 75 tests, 17 suites, all real (real Gemini generation calls, real embedding, real Postgres, a controlled substitute provider only for the two failure-injection scenarios a real API can't reliably reproduce on demand), verified green.
+- Full diagnostic (12 questions, 2 SOLID / 4 SHAKY / 6 UNKNOWN) in `docs/phases/09-llm-provider-grounded-generation.md`.
+
+**Phase 9 closing quiz: answered and scored (2026-09-20).** Came back at **3 SOLID / 3 SHAKY / 2 UNKNOWN** — the best UNKNOWN-count ratio of any closing quiz so far, and real movement from this phase's own opening diagnostic (2/4/6). Genuine wins: the empty-retrieval short-circuit reasoning, the off-by-one indexing in citation resolution, and the "let the live customer retry themselves rather than silently retrying in the background" reasoning all landed SOLID. **A pattern worth carrying forward across all three SHAKY answers**: each named an adjacent true fact (update the provider file; a future provider swap is plausible; low temperature relates to consistency) without landing the specific mechanism actually asked about — a milder, more specific gap than flat UNKNOWN, worth treating as "close but not precise" rather than either solved or missing. Full Q&A, a 4-item "Topics to master" list, and this pattern's writeup are in `docs/phases/09-*.md`.
+
+**Next up:** Phase 10 — Confidence scoring, refusal & escalation state machine (see `docs/PHASES.md`).
 
 ## Environment quirks worth knowing (this specific machine/session)
 

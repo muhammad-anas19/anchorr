@@ -13,5 +13,6 @@ import { RetrievalService } from './retrieval.service';
   imports: [TypeOrmModule.forFeature([Membership]), TenancyModule, EmbeddingModule],
   controllers: [RetrievalController],
   providers: [RetrievalService],
+  exports: [RetrievalService],
 })
 export class RetrievalModule {}
