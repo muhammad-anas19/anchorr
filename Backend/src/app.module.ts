@@ -9,6 +9,7 @@ import { RefreshToken } from './database/entities/refresh-token.entity';
 import { Document } from './database/entities/document.entity';
 import { DocumentContent } from './database/entities/document-content.entity';
 import { DocumentChunk } from './database/entities/document-chunk.entity';
+import { Conversation } from './database/entities/conversation.entity';
 import { AuthModule } from './modules/auth/auth.module';
 import { WorkspacesModule } from './modules/workspaces/workspaces.module';
 import { DocumentsModule } from './modules/documents/documents.module';
@@ -29,7 +30,7 @@ import { QueueModule } from './queue/queue.module';
         username: config.get<string>('DB_USERNAME'),
         password: config.get<string>('DB_PASSWORD'),
         database: config.get<string>('DB_NAME'),
-        entities: [Workspace, User, Membership, RefreshToken, Document, DocumentContent, DocumentChunk],
+        entities: [Workspace, User, Membership, RefreshToken, Document, DocumentContent, DocumentChunk, Conversation],
         synchronize: false,
       }),
     }),

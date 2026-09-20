@@ -1,3 +1,5 @@
+import { ConversationStatus } from '../../database/entities/conversation-status.enum';
+
 export interface Citation {
   index: number;
   chunkId: number;
@@ -8,4 +10,5 @@ export interface Citation {
 export interface AnswerResult {
   answer: string;
   citations: Citation[];
+  status: ConversationStatus;
 }

@@ -25,7 +25,7 @@ describe('Retrieval (e2e)', () => {
 
   beforeEach(async () => {
     await dataSource.query(
-      'TRUNCATE document_chunks, document_contents, documents, refresh_tokens, memberships, users, workspaces RESTART IDENTITY',
+      'TRUNCATE conversations, document_chunks, document_contents, documents, refresh_tokens, memberships, users, workspaces RESTART IDENTITY',
     );
   });
 

@@ -26,7 +26,7 @@ describe('Answer (e2e)', () => {
 
   beforeEach(async () => {
     await dataSource.query(
-      'TRUNCATE document_chunks, document_contents, documents, refresh_tokens, memberships, users, workspaces RESTART IDENTITY',
+      'TRUNCATE conversations, document_chunks, document_contents, documents, refresh_tokens, memberships, users, workspaces RESTART IDENTITY',
     );
   });
 
@@ -72,6 +72,12 @@ describe('Answer (e2e)', () => {
       expect(res.body.answer.toLowerCase()).toContain('30 day');
       expect(res.body.citations).toHaveLength(1);
       expect(res.body.citations[0]).toMatchObject({ index: 1, originalFilename: 'refunds.pdf' });
+      expect(res.body.status).toBe('answered');
+
+      const [saved] = await dataSource.query('SELECT * FROM conversations WHERE workspace_id = $1', [workspaceId]);
+      expect(saved.status).toBe('answered');
+      expect(saved.min_distance).toBeLessThan(0.45);
+      expect(saved.citations).toHaveLength(1);
     },
     20000,
   );
@@ -102,6 +108,57 @@ describe('Answer (e2e)', () => {
 
       expect(res.body.answer).toBe("I don't have information about that.");
       expect(res.body.citations).toEqual([]);
+      expect(res.body.status).toBe('refused');
+
+      const isolatedDataSource = moduleRef.get(DataSource);
+      const [saved] = await isolatedDataSource.query('SELECT * FROM conversations WHERE workspace_id = $1', [
+        workspaceId,
+      ]);
+      expect(saved.status).toBe('refused');
+      expect(saved.min_distance).toBeNull();
+
+      await isolatedApp.close();
+    },
+    15000,
+  );
+
+  it(
+    'refuses (rather than answering from a weak match) when the closest retrieved chunk is not actually relevant',
+    async () => {
+      const { token, workspaceId } = await register('anas@northwind.com', 'Northwind Devices');
+      await seedEmbeddedChunk(workspaceId, 'refunds', 'Refunds are available within 30 days of purchase.');
+
+      const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
+        .overrideProvider(ANSWER_GENERATION_PROVIDER)
+        .useValue({
+          generate: () => {
+            throw new Error('generation provider should never be called for a weak, below-threshold match');
+          },
+        })
+        .compile();
+      const isolatedApp = moduleRef.createNestApplication();
+      isolatedApp.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+      await isolatedApp.init();
+      const isolatedDataSource = moduleRef.get(DataSource);
+
+      // A real, genuinely unrelated question — measured directly against this project's own
+      // embedding model at ~0.56 distance vs. the refund chunk, above the 0.45 threshold —
+      // real chunks come back from retrieval (k defaults to 5, so *something* is always
+      // returned), but none of them are actually close enough to trust.
+      const res = await request(isolatedApp.getHttpServer())
+        .post(`/workspaces/${workspaceId}/ask`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ question: 'What is the airspeed velocity of an unladen swallow?' })
+        .expect(201);
+
+      expect(res.body.answer).toBe("I don't have information about that.");
+      expect(res.body.status).toBe('refused');
+
+      const [saved] = await isolatedDataSource.query('SELECT * FROM conversations WHERE workspace_id = $1', [
+        workspaceId,
+      ]);
+      expect(saved.status).toBe('refused');
+      expect(Number(saved.min_distance)).toBeGreaterThanOrEqual(0.45);
 
       await isolatedApp.close();
     },
@@ -177,33 +234,45 @@ describe('Answer (e2e)', () => {
     15000,
   );
 
-  it('surfaces a real, immediate error when the generation provider itself fails, rather than a silent fallback', async () => {
-    const { token, workspaceId } = await register('anas@northwind.com', 'Northwind Devices');
-    await seedEmbeddedChunk(workspaceId, 'refunds', 'Refunds are available within 30 days of purchase.');
+  it(
+    'escalates gracefully — not a raw 500 — when the generation provider itself fails, and persists the escalation',
+    async () => {
+      const { token, workspaceId } = await register('anas@northwind.com', 'Northwind Devices');
+      await seedEmbeddedChunk(workspaceId, 'refunds', 'Refunds are available within 30 days of purchase.');
 
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
-      .overrideProvider(ANSWER_GENERATION_PROVIDER)
-      .useValue({
-        generate: async () => {
-          throw new Error('Simulated Gemini outage.');
-        },
-      })
-      .compile();
-    const isolatedApp = moduleRef.createNestApplication();
-    isolatedApp.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
-    await isolatedApp.init();
+      const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
+        .overrideProvider(ANSWER_GENERATION_PROVIDER)
+        .useValue({
+          generate: async () => {
+            throw new Error('Simulated Gemini outage.');
+          },
+        })
+        .compile();
+      const isolatedApp = moduleRef.createNestApplication();
+      isolatedApp.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+      await isolatedApp.init();
+      const isolatedDataSource = moduleRef.get(DataSource);
 
-    // No retry, no queued job, no silent fallback answer — a real, immediate 500. Per Q10's
-    // design: the customer is waiting live; failing visibly is the correct behavior here,
-    // not the background-job "try again later" pattern from Phases 4-7.
-    await request(isolatedApp.getHttpServer())
-      .post(`/workspaces/${workspaceId}/ask`)
-      .set('Authorization', `Bearer ${token}`)
-      .send({ question: 'How many days for a refund?' })
-      .expect(500);
+      // Phase 9's raw 500 is now Phase 10's graceful escalation — a real, concrete reason to
+      // flag a conversation for a human, unlike a guessed confidence middle-zone. No retry
+      // either way: the customer is waiting live (Q10's reasoning still holds).
+      const res = await request(isolatedApp.getHttpServer())
+        .post(`/workspaces/${workspaceId}/ask`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ question: 'How many days for a refund?' })
+        .expect(201);
 
-    await isolatedApp.close();
-  });
+      expect(res.body.status).toBe('escalated');
+      expect(res.body.citations).toEqual([]);
+
+      const [saved] = await isolatedDataSource.query('SELECT * FROM conversations WHERE workspace_id = $1', [
+        workspaceId,
+      ]);
+      expect(saved.status).toBe('escalated');
+
+      await isolatedApp.close();
+    },
+  );
 
   it('rejects an empty question', async () => {
     const { token, workspaceId } = await register('anas@northwind.com', 'Northwind Devices');
