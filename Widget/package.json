@@ -1,5 +1,16 @@
 {
   "name": "widget",
   "private": true,
-  "version": "0.0.0"
+  "version": "0.0.0",
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --minify --outfile=dist/widget.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "socket.io-client": "^4.8.1"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0",
+    "typescript": "^5.7.3"
+  }
 }

@@ -36,7 +36,9 @@ describe('DocumentEmbeddingProcessor', () => {
   });
 
   async function createDocumentWithChunks(chunkCount: number): Promise<Document> {
-    await dataSource.query(`INSERT INTO workspaces (name) VALUES ('Test Workspace')`);
+    await dataSource.query(
+      `INSERT INTO workspaces (name, public_key) VALUES ('Test Workspace', gen_random_uuid())`,
+    );
     const document = await documents.save({
       workspaceId: 1,
       originalFilename: 'report.pdf',

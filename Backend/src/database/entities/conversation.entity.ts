@@ -25,6 +25,15 @@ export class Conversation {
   @JoinColumn({ name: 'workspace_id' })
   workspace: Workspace;
 
+  // Groups sequential turns of the same widget conversation together, so the last N rows
+  // sharing a sessionId can be fed back as context (Phase 11). Null for anything asked
+  // outside the widget (e.g. the dashboard's own manual "test the AI" call) — there is no
+  // ongoing session to group those into. Client-generated (see Widget's localStorage-backed
+  // session id), never server-assigned — the server never initiates a session.
+  @Index()
+  @Column({ name: 'session_id', type: 'varchar', nullable: true })
+  sessionId: string | null;
+
   @Column({ type: 'text' })
   question: string;
 

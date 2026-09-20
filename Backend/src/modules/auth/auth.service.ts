@@ -38,7 +38,7 @@ export class AuthService {
 
     const passwordHash = await this.passwordService.hash(dto.password);
     const user = await this.users.save({ email: dto.email, passwordHash });
-    const workspace = await this.workspaces.save({ name: dto.workspaceName });
+    const workspace = await this.workspaces.save({ name: dto.workspaceName, publicKey: randomUUID() });
     await this.memberships.save({
       userId: user.id,
       workspaceId: workspace.id,

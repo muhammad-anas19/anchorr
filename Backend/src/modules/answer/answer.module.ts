@@ -12,5 +12,6 @@ import { AnswerService } from './answer.service';
   imports: [TypeOrmModule.forFeature([Membership, Conversation]), TenancyModule, RetrievalModule, GenerationModule],
   controllers: [AnswerController],
   providers: [AnswerService],
+  exports: [AnswerService],
 })
 export class AnswerModule {}

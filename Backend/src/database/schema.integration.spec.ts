@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import { AppDataSource } from './data-source';
 import { Workspace } from './entities/workspace.entity';
 import { User } from './entities/user.entity';
@@ -22,7 +23,7 @@ describe('Workspace/User/Membership schema', () => {
     const userRepo = AppDataSource.getRepository(User);
     const membershipRepo = AppDataSource.getRepository(Membership);
 
-    const workspace = await workspaceRepo.save({ name: 'Northwind Devices' });
+    const workspace = await workspaceRepo.save({ name: 'Northwind Devices', publicKey: randomUUID() });
     const user = await userRepo.save({ email: 'anas@northwind.com', passwordHash: 'hashed' });
 
     await membershipRepo.save({ workspaceId: workspace.id, userId: user.id, role: MembershipRole.OWNER });
@@ -37,7 +38,7 @@ describe('Workspace/User/Membership schema', () => {
     const userRepo = AppDataSource.getRepository(User);
     const membershipRepo = AppDataSource.getRepository(Membership);
 
-    const workspace = await workspaceRepo.save({ name: 'Northwind Devices' });
+    const workspace = await workspaceRepo.save({ name: 'Northwind Devices', publicKey: randomUUID() });
     const user = await userRepo.save({ email: 'anas@northwind.com', passwordHash: 'hashed' });
     await membershipRepo.save({ workspaceId: workspace.id, userId: user.id, role: MembershipRole.OWNER });
 

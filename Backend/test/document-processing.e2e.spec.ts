@@ -75,7 +75,9 @@ describe('Document processing queue (e2e)', () => {
     status: DocumentStatus,
     overrides: Partial<Pick<Document, 'storageKey' | 'mimeType' | 'contentHash'>> = {},
   ): Promise<Document> {
-    await dataSource.query(`INSERT INTO workspaces (name) VALUES ('Test Workspace')`);
+    await dataSource.query(
+      `INSERT INTO workspaces (name, public_key) VALUES ('Test Workspace', gen_random_uuid())`,
+    );
     await dataSource.query(
       `INSERT INTO users (email, password_hash) VALUES ('anas@northwind.com', 'unused-in-this-test')`,
     );

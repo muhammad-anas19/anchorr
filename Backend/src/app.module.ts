@@ -15,6 +15,7 @@ import { WorkspacesModule } from './modules/workspaces/workspaces.module';
 import { DocumentsModule } from './modules/documents/documents.module';
 import { RetrievalModule } from './modules/retrieval/retrieval.module';
 import { AnswerModule } from './modules/answer/answer.module';
+import { WidgetChatModule } from './modules/widget-chat/widget-chat.module';
 import { QueueModule } from './queue/queue.module';
 
 @Module({
@@ -40,6 +41,7 @@ import { QueueModule } from './queue/queue.module';
     DocumentsModule,
     RetrievalModule,
     AnswerModule,
+    WidgetChatModule,
   ],
   controllers: [AppController],
 })

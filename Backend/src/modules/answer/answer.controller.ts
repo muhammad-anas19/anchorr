@@ -11,6 +11,6 @@ export class AnswerController {
 
   @Post()
   ask(@Param('workspaceId', ParseIntPipe) workspaceId: number, @Body() dto: AskDto) {
-    return this.answerService.answer(workspaceId, dto.question);
+    return this.answerService.answer(workspaceId, dto.question, dto.sessionId ?? null);
   }
 }

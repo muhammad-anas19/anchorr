@@ -16,7 +16,7 @@
 | 8 | Vector similarity search (retrieval v1) | DONE | 7 | query-time embedding, k-NN search |
 | 9 | LLM provider interface & grounded answer generation | DONE | 8 | provider abstraction design, RAG prompt assembly, citation attribution |
 | 10 | Confidence scoring, refusal & escalation state machine | DONE | 9 | retrieval-based confidence threshold, Conversation state machine |
-| 11 | Public widget + real-time chat | IN PROGRESS | 2, 10 | WebSockets (Socket.IO), public API key + domain allowlist, separate widget build target. **Also where the Phase 1 auto-increment-PK decision needs revisiting for externally-exposed IDs.** |
+| 11 | Public widget + real-time chat | DONE — see `docs/phases/11-public-widget-realtime-chat.md` | 2, 10 | WebSockets (Socket.IO), public API key + domain allowlist, separate widget build target. **Also where the Phase 1 auto-increment-PK decision was revisited for externally-exposed IDs** (a targeted `publicKey` token, not a project-wide PK migration). |
 | 12 | Agent console: human handoff | PENDING | 11 | presence tracking, optimistic concurrency on "claim" |
 | 13 | Hybrid search (vector + keyword) | PENDING | 8 | Postgres full-text search, rank fusion |
 | 14 | Semantic caching | PENDING | 9, 7 | similarity-keyed Redis caching, cache invalidation |
@@ -30,6 +30,6 @@
 See `CLAUDE.md` and the `anchor-project-decisions` memory for the full list with reasoning. Summary:
 - LLM provider: Google Gemini (chat + embeddings), behind a custom provider interface.
 - Data layer: TypeORM + `pgvector`.
-- Primary keys: auto-increment integers, not UUIDs (debt to repay at Phase 11).
+- Primary keys: auto-increment integers, not UUIDs. Phase 11 repaid the externally-exposed-ID debt with a targeted `Workspace.publicKey` random token, not a project-wide PK migration.
 - No monorepo — `Backend/`, `Frontend/`, `Widget/` are independent, npm-managed folders.
-- Postgres: native instance managed via pgAdmin, not Docker. Redis: still Docker (`docker-compose.yml`).
+- Postgres: revised in Phase 7 — Anchor's own database runs in Docker (`pgvector/pgvector:pg18`, port 5433), not the native pgAdmin-managed install (still there, on 5432, for other local projects). Redis: also Docker (`docker-compose.yml`).

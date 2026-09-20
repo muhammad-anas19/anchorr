@@ -31,7 +31,7 @@ export class AnswerService {
     @InjectRepository(Conversation) private readonly conversations: Repository<Conversation>,
   ) {}
 
-  async answer(workspaceId: number, question: string): Promise<AnswerResult> {
+  async answer(workspaceId: number, question: string, sessionId: string | null = null): Promise<AnswerResult> {
     const chunks = await this.retrievalService.retrieveRelevantChunks(workspaceId, question);
 
     // chunks are already ordered closest-first (Phase 8) — chunks[0] IS the minimum distance,
@@ -42,16 +42,24 @@ export class AnswerService {
 
     // Short-circuit: never call the generation LLM with nothing to ground it, or with only
     // weak, unlikely-to-be-relevant matches — see Phase 9's Q6 and Phase 10's own diagnostic.
-    // A weak match is treated exactly like no match at all: refused, not answered.
+    // A weak match is treated exactly like no match at all: refused, not answered. History is
+    // irrelevant here — there's nothing to generate, so there's no prompt to add it to.
     if (minDistance === null || minDistance >= CONFIDENT_DISTANCE_THRESHOLD) {
       return this.persistAndReturn(workspaceId, question, {
         answer: NO_INFORMATION_ANSWER,
         citations: [],
         status: ConversationStatus.REFUSED,
-      }, minDistance);
+      }, minDistance, sessionId);
     }
 
-    const systemPrompt = buildSystemPrompt(chunks);
+    // Only fetched once we know we're actually calling the LLM — a refused/escalated turn
+    // never needed the history in the first place. Only rows in *this* workspace with the
+    // *same* sessionId — mixing another workspace's turns in here would be the same kind of
+    // tenant leak WorkspaceGuard has guarded against since Phase 2, just via a query instead
+    // of a socket room (Q6/Q10 of this phase's diagnostic).
+    const history = sessionId ? await this.fetchRecentHistory(workspaceId, sessionId) : [];
+
+    const systemPrompt = buildSystemPrompt(chunks, history);
     let rawAnswer: string;
     try {
       rawAnswer = await this.generationProvider.generate(systemPrompt, question);
@@ -64,7 +72,7 @@ export class AnswerService {
         answer: ESCALATION_ANSWER,
         citations: [],
         status: ConversationStatus.ESCALATED,
-      }, minDistance);
+      }, minDistance, sessionId);
     }
 
     const citations = resolveCitations(rawAnswer, chunks);
@@ -72,7 +80,20 @@ export class AnswerService {
       answer: rawAnswer,
       citations,
       status: ConversationStatus.ANSWERED,
-    }, minDistance);
+    }, minDistance, sessionId);
+  }
+
+  // Last 5 turns of the same session, oldest first — the order a transcript would read in,
+  // not DB-insertion order (which is why we fetch DESC then reverse rather than fetching ASC
+  // with an offset: taking the most recent 5 requires ordering by newest first at the query
+  // level, but the prompt should read chronologically).
+  private async fetchRecentHistory(workspaceId: number, sessionId: string): Promise<Conversation[]> {
+    const rows = await this.conversations.find({
+      where: { workspaceId, sessionId },
+      order: { createdAt: 'DESC' },
+      take: 5,
+    });
+    return rows.reverse();
   }
 
   private async persistAndReturn(
@@ -80,9 +101,11 @@ export class AnswerService {
     question: string,
     result: AnswerResult,
     minDistance: number | null,
+    sessionId: string | null,
   ): Promise<AnswerResult> {
     await this.conversations.save({
       workspaceId,
+      sessionId,
       question,
       answer: result.answer,
       status: result.status,
@@ -93,15 +116,21 @@ export class AnswerService {
   }
 }
 
-function buildSystemPrompt(chunks: RetrievedChunk[]): string {
+function buildSystemPrompt(chunks: RetrievedChunk[], history: Conversation[]): string {
   const context = chunks.map((chunk, i) => `[${i + 1}] ${chunk.content}`).join('\n');
+  const historySection =
+    history.length > 0
+      ? '\n\nPrevious turns in this conversation (for context only — citations above still ' +
+        'refer only to the numbered context, not to these prior turns):\n' +
+        history.map((turn) => `Customer: ${turn.question}\nAssistant: ${turn.answer}`).join('\n')
+      : '';
   return (
     "You are a customer support assistant. Answer the customer's question using ONLY the " +
     'information in the context below — do not use any outside knowledge. If the answer is ' +
     `not contained in the context, reply with exactly: "${NO_INFORMATION_ANSWER}"\n\n` +
     'When you use information from the context, cite it by putting the matching bracketed ' +
     'number(s) immediately after the relevant sentence, like [1] or [1][2].\n\n' +
-    `Context:\n${context}`
+    `Context:\n${context}${historySection}`
   );
 }
 

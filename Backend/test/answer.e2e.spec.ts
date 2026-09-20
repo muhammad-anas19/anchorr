@@ -274,6 +274,94 @@ describe('Answer (e2e)', () => {
     },
   );
 
+  it(
+    'includes the last turns of the same session as prior conversation context in the prompt',
+    async () => {
+      const { token, workspaceId } = await register('anas@northwind.com', 'Northwind Devices');
+      await seedEmbeddedChunk(workspaceId, 'refunds', 'Refunds are available within 30 days of purchase.');
+
+      const sessionId = 'session-abc-123';
+      await dataSource.query(
+        `INSERT INTO conversations (workspace_id, session_id, question, answer, status, min_distance, citations)
+         VALUES ($1, $2, 'What is your refund policy?', 'Refunds are available within 30 days.', 'answered', 0.1, '[]')`,
+        [workspaceId, sessionId],
+      );
+
+      let capturedPrompt = '';
+      const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
+        .overrideProvider(ANSWER_GENERATION_PROVIDER)
+        .useValue({
+          generate: async (systemPrompt: string) => {
+            capturedPrompt = systemPrompt;
+            return 'Yes, 30 days from purchase [1].';
+          },
+        })
+        .compile();
+      const isolatedApp = moduleRef.createNestApplication();
+      isolatedApp.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+      await isolatedApp.init();
+
+      await request(isolatedApp.getHttpServer())
+        .post(`/workspaces/${workspaceId}/ask`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ question: 'And does that apply to sale items too?', sessionId })
+        .expect(201);
+
+      expect(capturedPrompt).toContain('What is your refund policy?');
+      expect(capturedPrompt).toContain('Refunds are available within 30 days.');
+
+      const isolatedDataSource = moduleRef.get(DataSource);
+      const rows = await isolatedDataSource.query(
+        'SELECT * FROM conversations WHERE workspace_id = $1 AND session_id = $2 ORDER BY id',
+        [workspaceId, sessionId],
+      );
+      expect(rows).toHaveLength(2);
+      expect(rows[1].session_id).toBe(sessionId);
+
+      await isolatedApp.close();
+    },
+    15000,
+  );
+
+  it(
+    'never leaks a different session\'s history into the prompt',
+    async () => {
+      const { token, workspaceId } = await register('anas@northwind.com', 'Northwind Devices');
+      await seedEmbeddedChunk(workspaceId, 'refunds', 'Refunds are available within 30 days of purchase.');
+
+      await dataSource.query(
+        `INSERT INTO conversations (workspace_id, session_id, question, answer, status, min_distance, citations)
+         VALUES ($1, 'a-different-session', 'What are your store hours?', 'We are open 9-5.', 'answered', 0.1, '[]')`,
+        [workspaceId],
+      );
+
+      let capturedPrompt = '';
+      const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
+        .overrideProvider(ANSWER_GENERATION_PROVIDER)
+        .useValue({
+          generate: async (systemPrompt: string) => {
+            capturedPrompt = systemPrompt;
+            return 'Refunds are available within 30 days [1].';
+          },
+        })
+        .compile();
+      const isolatedApp = moduleRef.createNestApplication();
+      isolatedApp.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+      await isolatedApp.init();
+
+      await request(isolatedApp.getHttpServer())
+        .post(`/workspaces/${workspaceId}/ask`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ question: 'How many days for a refund?', sessionId: 'this-session' })
+        .expect(201);
+
+      expect(capturedPrompt).not.toContain('store hours');
+
+      await isolatedApp.close();
+    },
+    15000,
+  );
+
   it('rejects an empty question', async () => {
     const { token, workspaceId } = await register('anas@northwind.com', 'Northwind Devices');
 

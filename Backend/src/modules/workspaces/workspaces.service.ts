@@ -3,10 +3,14 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Membership } from '../../database/entities/membership.entity';
 import { MembershipRole } from '../../database/entities/membership-role.enum';
+import { Workspace } from '../../database/entities/workspace.entity';
 
 @Injectable()
 export class WorkspacesService {
-  constructor(@InjectRepository(Membership) private readonly memberships: Repository<Membership>) {}
+  constructor(
+    @InjectRepository(Membership) private readonly memberships: Repository<Membership>,
+    @InjectRepository(Workspace) private readonly workspaces: Repository<Workspace>,
+  ) {}
 
   async listMembers(workspaceId: number) {
     const rows = await this.memberships.find({
@@ -30,5 +34,25 @@ export class WorkspacesService {
     membership.role = role;
     await this.memberships.save(membership);
     return { userId: targetUserId, role };
+  }
+
+  async getWidgetSettings(workspaceId: number) {
+    const workspace = await this.findWorkspaceOrThrow(workspaceId);
+    return { publicKey: workspace.publicKey, allowedOrigins: workspace.allowedOrigins };
+  }
+
+  async updateAllowedOrigins(workspaceId: number, allowedOrigins: string[]) {
+    const workspace = await this.findWorkspaceOrThrow(workspaceId);
+    workspace.allowedOrigins = allowedOrigins;
+    await this.workspaces.save(workspace);
+    return { publicKey: workspace.publicKey, allowedOrigins: workspace.allowedOrigins };
+  }
+
+  private async findWorkspaceOrThrow(workspaceId: number): Promise<Workspace> {
+    const workspace = await this.workspaces.findOne({ where: { id: workspaceId } });
+    if (!workspace) {
+      throw new NotFoundException('Workspace not found.');
+    }
+    return workspace;
   }
 }
