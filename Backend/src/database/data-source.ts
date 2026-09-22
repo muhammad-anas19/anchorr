@@ -9,6 +9,7 @@ import { Document } from './entities/document.entity';
 import { DocumentContent } from './entities/document-content.entity';
 import { DocumentChunk } from './entities/document-chunk.entity';
 import { Conversation } from './entities/conversation.entity';
+import { ConversationSession } from './entities/conversation-session.entity';
 
 config();
 
@@ -19,7 +20,17 @@ export const AppDataSource = new DataSource({
   username: process.env.DB_USERNAME,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
-  entities: [Workspace, User, Membership, RefreshToken, Document, DocumentContent, DocumentChunk, Conversation],
+  entities: [
+    Workspace,
+    User,
+    Membership,
+    RefreshToken,
+    Document,
+    DocumentContent,
+    DocumentChunk,
+    Conversation,
+    ConversationSession,
+  ],
   migrations: ['src/database/migrations/*.ts'],
   synchronize: false,
 });

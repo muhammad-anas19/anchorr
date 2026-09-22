@@ -32,7 +32,7 @@ describe('Documents (e2e)', () => {
   });
 
   beforeEach(async () => {
-    await dataSource.query('TRUNCATE conversations, document_chunks, document_contents, documents, refresh_tokens, memberships, users, workspaces RESTART IDENTITY');
+    await dataSource.query('TRUNCATE conversation_sessions, conversations, document_chunks, document_contents, documents, refresh_tokens, memberships, users, workspaces RESTART IDENTITY');
     await rm(STORAGE_DIR, { recursive: true, force: true });
   });
 

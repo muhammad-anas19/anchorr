@@ -36,7 +36,7 @@ describe('AuthService (integration)', () => {
   });
 
   beforeEach(async () => {
-    await AppDataSource.query('TRUNCATE conversations, document_chunks, document_contents, documents, refresh_tokens, memberships, users, workspaces RESTART IDENTITY');
+    await AppDataSource.query('TRUNCATE conversation_sessions, conversations, document_chunks, document_contents, documents, refresh_tokens, memberships, users, workspaces RESTART IDENTITY');
   });
 
   it('registers a user, creates their workspace, and makes them owner', async () => {
@@ -110,5 +110,22 @@ describe('AuthService (integration)', () => {
     await authService.logout(refreshToken);
 
     await expect(authService.refresh(refreshToken)).rejects.toThrow();
+  });
+
+  it('me() reports every workspace a user belongs to, with their role in each', async () => {
+    await authService.register({
+      email: 'anas@northwind.com',
+      password: 'correct-horse-battery',
+      workspaceName: 'Northwind Devices',
+    });
+    const userRepo = AppDataSource.getRepository(User);
+    const user = await userRepo.findOneByOrFail({ email: 'anas@northwind.com' });
+
+    const result = await authService.me(user.id);
+
+    expect(result.userId).toBe(user.id);
+    expect(result.memberships).toEqual([
+      { workspaceId: expect.any(Number), workspaceName: 'Northwind Devices', role: 'owner' },
+    ]);
   });
 });

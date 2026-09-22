@@ -50,8 +50,8 @@ TypeScript, NestJS, PostgreSQL + pgvector, Redis, BullMQ, Socket.IO, Next.js, St
 
 ```
 Backend/    NestJS API — built starting Phase 1
-Frontend/   Next.js dashboard — placeholder only, built starting Phase 2+
-Widget/     Embeddable vanilla-TS chat widget — placeholder only, built starting Phase 11
+Frontend/   Next.js dashboard — built starting Phase 12 (feature-sliced: app/ + features/ + shared/, see Phase 12's "Repo structure" note)
+Widget/     Embeddable vanilla-TS chat widget — built starting Phase 11
 docs/
   PHASES.md         full 18-phase roadmap with status
   SETUP.md          local dev environment setup
@@ -77,6 +77,26 @@ Backend/src/
 ```
 
 **Rule going forward:** a new guard, interceptor, filter, or cross-cutting decorator goes in `src/common/`, not inside whichever feature module first needed it. A new feature (with its own controller/service/module) goes in `src/modules/<name>/`. Shared infrastructure that multiple modules depend on (database, redis, and similarly config/cache/stripe if/when they exist) stays a top-level sibling to `modules/`.
+
+**Inside `Frontend/`** (feature-sliced, requested mid-Phase-12 — see `docs/phases/12-*.md`'s "Repo structure" note):
+
+```
+Frontend/
+├── app/                 Next.js routing ONLY — every page.tsx just composes a feature
+│   ├── login/             component inside a shared layout; no real logic here
+│   ├── register/
+│   └── console/
+├── features/            one folder per feature, each with its own api.ts + components
+│   ├── auth/              (+ LoginForm.tsx, RegisterForm.tsx)
+│   └── handoff/           (+ useAgentSocket.ts, ConsoleApp.tsx, ConversationQueue.tsx, ...)
+└── shared/              cross-cutting, feature-agnostic ONLY — nothing here knows about
+    ├── api/client.ts      any specific feature's types (no ConversationSession, no Membership)
+    ├── auth/token.ts
+    ├── socket/
+    └── ui/                Button, TextField, ErrorBanner, AuthLayout
+```
+
+**Rule going forward:** a new page's actual logic goes in `features/<name>/`, not in `app/`; `app/*/page.tsx` stays a thin composition of feature components. Code goes in `shared/` only if it's genuinely feature-agnostic (would make sense even if every current feature were deleted) — the same test this project already applies to Backend's `common/` vs `modules/` split.
 
 ## Locked decisions (see `docs/PHASES.md` for the short version, `docs/phases/01-*.md` and the `anchor-project-decisions` memory for full reasoning)
 
@@ -233,10 +253,29 @@ Done:
 
 **Phase 11 closing quiz: answered and scored (2026-09-20).** Came back at **2 SOLID / 6 SHAKY / 3 UNKNOWN** — a real drop from the opening diagnostic's 6/3/2, echoing Phase 2's sharpest version of the same lesson: watching something work and being able to explain its exact mechanism are different skills, and this closing quiz leaned hard on precise "why," not just general shape. Two genuine wins held: Q1 (no access token on the widget's side) and Q8 (history is only fetched once the LLM is actually going to be called, to avoid a wasted query) both landed SOLID. **The most notable standing gap**: Q11 (what Phase 12 needs, and what this phase built to prepare for it) is UNKNOWN for the *second* consecutive exposure — it was also UNKNOWN as Q10 in the opening diagnostic. This is the same room-broadcast-for-a-future-consumer idea, unmoved across two full attempts; Phase 12 will require actually implementing the agent-joins-the-room mechanism this describes, so treat Phase 12's own diagnostic score on this exact idea as the real signal. Two other topics went genuinely UNKNOWN for the first time (fail-closed-vs-fail-open reasoning; Shadow DOM's real encapsulation guarantee vs. a naming convention) — both taught in full in the phase doc. Full Q&A, all explanations, and a combined 7-item "Topics to master" list are in `docs/phases/11-*.md`.
 
-**Next up:** Phase 12 — Agent console: human handoff.
+**Phase 12 (Agent console: human handoff) — built and tested, closing quiz not yet posed.**
+
+Done:
+- New `ConversationSession` table/migration (`CreateConversationSessions`): the claimable unit `Conversation`'s own immutable per-turn log has no equivalent of — `status` (`open`/`escalated`/`claimed`/`resolved`), `claimedByUserId` (nullable, `SET NULL`), `claimedAt`. `UNIQUE(workspaceId, sessionId)`, matching `Document`'s own compound-unique precedent. Hit the same recurring `migration:generate`-drops-the-HNSW-index bug a fourth time; hand-fixed the same way as Phases 10-11.
+- `HandoffService.claim()`/`resolve()`: a single atomically-conditional `UPDATE ... WHERE status = 'escalated'` (or `'claimed'`), never a separate check-then-write — real optimistic concurrency control, not a lock. Proven with an actual two-simultaneous-HTTP-requests race test: exactly one call gets `200`, the other a real `409`, and the database ends up with exactly one `claimed_by_user_id`.
+- Presence tracking tied to the live socket connection, not login/logout (a real, corrected misconception from this phase's own diagnostic). `WidgetChatGateway` (Phase 11) extended with a second, JWT-authenticated connection branch for agents, alongside the existing `publicKey`-authenticated customer branch — both in the *same* namespace, since Socket.IO rooms don't cross namespace boundaries and an agent has to join the exact rooms a customer's socket already sits in. A new `agents:{workspaceId}` room carries real-time `session-escalated`/`session-claimed`/`session-resolved` notifications to every connected agent.
+- A new top-level `src/realtime/` module (`RealtimeBroadcaster` + `rooms.ts`) — the fix for a real circular-dependency problem (`WidgetChatModule` → `AnswerModule` → `HandoffModule` → back to `WidgetChatModule` would have been a genuine cycle). Same "shared infra becomes a top-level sibling to `modules/`" pattern Phase 8 already established for `EmbeddingProvider`.
+- Once claimed, `WidgetChatGateway.handleMessage` stops calling `AnswerService` for that session entirely — no wasted Gemini call, no risk of an AI reply landing right after a human's. `resolve` hands the conversation back to the AI for the very next message with zero extra code, since the same status check simply stops matching.
+- `GET /auth/me` extended (a small, natural addition) to also return the caller's workspace memberships — the first client (the new Frontend) that ever needs to discover "which workspace am I in" instead of already having one in its URL. `main.ts` gained `app.enableCors()` — the first time this project's REST API is ever called from a real, different-origin browser page instead of `curl`/`supertest`.
+- **`Frontend/` built for the first time in this project** — a minimal Next.js console (`/login`, `/register`, `/console`): the escalated/claimed queue (live-updated over the same socket), a claim button, a chat panel (turn history + live `customer-message`/`agent-message`/`answer` events), a resolve button. No refresh-token rotation on this side — a deliberate, explicitly-flagged scope boundary. Verified for real against a live Backend instance: real CORS headers confirmed present, `/auth/me`'s new shape confirmed correct, and a real `socket.io-client` connection using the exact auth shape `shared/socket/connectAgentSocket.ts` implements confirmed reaching `'ready'`. No browser automation tool is available in this environment, so the actual click-through UX was not visually verified — flagged explicitly rather than assumed.
+- **Restructured mid-increment, on request, into a feature-sliced layout**: `app/` holds only thin Next.js route files (each just composing a feature component inside a shared layout); `features/auth/` and `features/handoff/` hold each feature's own `api.ts` + components + (for handoff) a `useAgentSocket` hook; `shared/` holds only genuinely feature-agnostic code (the fetch wrapper, token storage, the socket connector, generic UI atoms like `Button`/`TextField`) — nothing in `shared/` knows what a `ConversationSession` is. Mirrors the Backend's own `common/` (cross-cutting) vs. `modules/<name>/` (features) split, applied to the Frontend for the first time. A `/register` page was added in the same pass — `POST /auth/register` (Phase 2) had no Frontend surface at all until now.
+- **Two real, previously-undiscovered bugs found while building and testing this phase** (full predict/trigger/result writeups in the phase doc): (1) a `jest --runInBand` run could pass all tests yet fail to exit, silently holding the real Postgres/Redis connections open — a second run starting before the first was killed then corrupted both via concurrent `TRUNCATE`s, producing failures that looked like real product bugs but weren't; fixed with `--forceExit`. (2) A genuine race: a Socket.IO client's `'connect'` event fires before an `async handleConnection` hook finishes its own DB lookups and room-join — **latent in Phase 11's customer flow too**, just never triggered until Phase 12's heavier test load surfaced it. Fixed with an explicit `'ready'` event every client now waits for instead of `'connect'`.
+- A real, caught-by-a-failing-test bug: `HandoffController`'s `@Roles(OWNER, AGENT)` was first applied at the class level; `RolesGuard` only reads method-level metadata (`context.getHandler()`), so it was silently never enforced. Fixed by moving the decorator onto each method, matching every other controller in this project.
+- 113 tests, 21 suites (many failing at time of writing purely from today's exhausted Gemini daily quotas — generation and, for the first time, embedding too, from heavy same-day test iteration while debugging; every failure traces to a real API call, none are regressions — the relevant new suites were independently confirmed fully green earlier in the same session before the quota ran out).
+- Full diagnostic (11 questions, 2 SOLID / 7 SHAKY / 2 UNKNOWN) documented in `docs/phases/12-agent-console-human-handoff.md`.
+
+**Next up:** Phase 12's closing quiz (not yet posed), then Phase 13 — Hybrid search (vector + keyword).
 
 ## Environment quirks worth knowing (this specific machine/session)
 
 - Bash `mv` on a directory can silently drop regular files while preserving subdirectories. Files have also vanished spontaneously with no operation touching them. **Always verify with `find <dir> -type f` after any write/move**, and recreate anything missing.
 - If VS Code's Source Control panel shows an absurd change count or references paths that no longer exist, it's a stale cache — check `git status --short` from the CLI first.
 - This machine runs multiple unrelated Docker projects and a native Postgres install. Port collisions are real and silent (wrong-server auth failures, not connection errors) — always check `Get-NetTCPConnection -LocalPort <port>` / `docker ps -a` before assuming a container's config is wrong.
+- **A `jest --runInBand` run can fail to exit even after all tests pass** ("Jest did not exit one second after the test run has completed... asynchronous operations that weren't stopped") — seen for real in Phase 12, almost certainly from the Socket.IO/gateway test suites' connections. The stale process silently keeps holding the real Postgres/Redis connections; if a *second* test run starts before the first one is killed, both processes `TRUNCATE` the same shared tables concurrently and corrupt each other's results in ways that look like real, confusing product bugs (timeouts, wrong-workspace 404s) but aren't. **Always check `Get-CimInstance Win32_Process -Filter "name='node.exe'"` for leftover `jest` processes before trusting a confusing failure**, and kill any found. Fixed going forward by adding `--forceExit` to `Backend/package.json`'s `test` script.
+- **A Socket.IO client's `'connect'` event fires as soon as the transport handshake completes — it does *not* wait for an `async OnGatewayConnection.handleConnection` hook to finish.** A message emitted immediately after `'connect'` can reach the server before `handleConnection`'s own DB lookups / room-join have completed, intermittently hitting an "unknown connection" branch — a genuine race, not a flake, first caught for real in Phase 12 under heavier concurrent test load (it was latent in Phase 11's customer flow too, just never triggered before). Fixed by having the gateway emit an explicit `'ready'` event only after its own async setup finishes, and having every client wait for `'ready'`, not `'connect'`, before sending anything.
+- **Both Gemini free-tier daily quotas (generation *and* embedding) can run out from heavy same-day test iteration**, not just normal usage — a long debugging session with many full-suite re-runs burned through the embedding model's 1000/day quota in addition to the already-frequently-hit 20/day generation quota. When a large, unfamiliar spread of test failures suddenly appears across many unrelated suites, check whether they *all* trace to real API calls before assuming a code regression.

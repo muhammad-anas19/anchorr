@@ -10,12 +10,14 @@ import { Document } from './database/entities/document.entity';
 import { DocumentContent } from './database/entities/document-content.entity';
 import { DocumentChunk } from './database/entities/document-chunk.entity';
 import { Conversation } from './database/entities/conversation.entity';
+import { ConversationSession } from './database/entities/conversation-session.entity';
 import { AuthModule } from './modules/auth/auth.module';
 import { WorkspacesModule } from './modules/workspaces/workspaces.module';
 import { DocumentsModule } from './modules/documents/documents.module';
 import { RetrievalModule } from './modules/retrieval/retrieval.module';
 import { AnswerModule } from './modules/answer/answer.module';
 import { WidgetChatModule } from './modules/widget-chat/widget-chat.module';
+import { HandoffModule } from './modules/handoff/handoff.module';
 import { QueueModule } from './queue/queue.module';
 
 @Module({
@@ -31,7 +33,17 @@ import { QueueModule } from './queue/queue.module';
         username: config.get<string>('DB_USERNAME'),
         password: config.get<string>('DB_PASSWORD'),
         database: config.get<string>('DB_NAME'),
-        entities: [Workspace, User, Membership, RefreshToken, Document, DocumentContent, DocumentChunk, Conversation],
+        entities: [
+          Workspace,
+          User,
+          Membership,
+          RefreshToken,
+          Document,
+          DocumentContent,
+          DocumentChunk,
+          Conversation,
+          ConversationSession,
+        ],
         synchronize: false,
       }),
     }),
@@ -42,6 +54,7 @@ import { QueueModule } from './queue/queue.module';
     RetrievalModule,
     AnswerModule,
     WidgetChatModule,
+    HandoffModule,
   ],
   controllers: [AppController],
 })

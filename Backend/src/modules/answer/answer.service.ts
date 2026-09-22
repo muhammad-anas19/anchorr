@@ -9,6 +9,7 @@ import {
 } from '../../generation/answer-generation-provider.interface';
 import { Conversation } from '../../database/entities/conversation.entity';
 import { ConversationStatus } from '../../database/entities/conversation-status.enum';
+import { HandoffService } from '../handoff/handoff.service';
 import { AnswerResult, Citation } from './answer-result.interface';
 
 const NO_INFORMATION_ANSWER = "I don't have information about that.";
@@ -29,6 +30,7 @@ export class AnswerService {
     private readonly retrievalService: RetrievalService,
     @Inject(ANSWER_GENERATION_PROVIDER) private readonly generationProvider: AnswerGenerationProvider,
     @InjectRepository(Conversation) private readonly conversations: Repository<Conversation>,
+    private readonly handoffService: HandoffService,
   ) {}
 
   async answer(workspaceId: number, question: string, sessionId: string | null = null): Promise<AnswerResult> {
@@ -112,6 +114,14 @@ export class AnswerService {
       minDistance,
       citations: result.citations,
     });
+
+    // A genuine escalation is the one outcome an agent actually needs to see (Phase 12) —
+    // recorded against the session as a whole, not this one turn, and only when there's a
+    // session to record it against at all (the dashboard's own manual /ask calls have none).
+    if (result.status === ConversationStatus.ESCALATED && sessionId) {
+      await this.handoffService.recordEscalation(workspaceId, sessionId);
+    }
+
     return result;
   }
 }

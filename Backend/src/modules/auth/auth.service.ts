@@ -30,6 +30,21 @@ export class AuthService {
     private readonly configService: ConfigService,
   ) {}
 
+  // Lets a freshly-logged-in client (the Frontend console, Phase 12) discover which
+  // workspace(s) it belongs to and with what role — nothing before this phase ever needed
+  // that, since every prior REST call already had a workspaceId in its URL.
+  async me(userId: number) {
+    const memberships = await this.memberships.find({ where: { userId }, relations: { workspace: true } });
+    return {
+      userId,
+      memberships: memberships.map((m) => ({
+        workspaceId: m.workspaceId,
+        workspaceName: m.workspace.name,
+        role: m.role,
+      })),
+    };
+  }
+
   async register(dto: RegisterDto): Promise<TokenPair> {
     const existing = await this.users.findOne({ where: { email: dto.email } });
     if (existing) {

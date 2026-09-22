@@ -39,7 +39,7 @@ describe('Widget chat gateway (e2e)', () => {
 
   beforeEach(async () => {
     await dataSource.query(
-      'TRUNCATE conversations, document_chunks, document_contents, documents, refresh_tokens, memberships, users, workspaces RESTART IDENTITY',
+      'TRUNCATE conversation_sessions, conversations, document_chunks, document_contents, documents, refresh_tokens, memberships, users, workspaces RESTART IDENTITY',
     );
   });
 
@@ -115,7 +115,7 @@ describe('Widget chat gateway (e2e)', () => {
       await seedEmbeddedChunk(workspaceId, 'Refunds are available within 30 days of purchase.');
 
       const client = connectClient(publicKey, 'session-1', 'http://widget-host.example');
-      await waitFor(client, 'connect');
+      await waitFor(client, 'ready');
 
       client.emit('message', { question: 'How many days for a refund?' });
       const answer = await waitFor<{ answer: string; status: string }>(client, 'answer');
@@ -177,7 +177,7 @@ describe('Widget chat gateway (e2e)', () => {
 
       const sessionA = connectClient(publicKey, 'session-A', 'http://widget-host.example');
       const sessionB = connectClient(publicKey, 'session-B', 'http://widget-host.example');
-      await Promise.all([waitFor(sessionA, 'connect'), waitFor(sessionB, 'connect')]);
+      await Promise.all([waitFor(sessionA, 'ready'), waitFor(sessionB, 'ready')]);
 
       let sessionBReceivedAnything = false;
       sessionB.on('answer', () => {
@@ -257,7 +257,7 @@ describe('Widget chat gateway (e2e)', () => {
         forceNew: true,
       });
       await new Promise<void>((resolve, reject) => {
-        doomedClient.once('connect', () => resolve());
+        doomedClient.once('ready', () => resolve());
         doomedClient.once('connect_error', reject);
       });
 
@@ -282,7 +282,7 @@ describe('Widget chat gateway (e2e)', () => {
       });
       clients.push(healthyClient);
       await new Promise<void>((resolve, reject) => {
-        healthyClient.once('connect', () => resolve());
+        healthyClient.once('ready', () => resolve());
         healthyClient.once('connect_error', reject);
       });
       healthyClient.emit('message', { question: 'How many days for a refund?' });
@@ -304,7 +304,7 @@ describe('Widget chat gateway (e2e)', () => {
       await redis.del(`widget-messages:${publicKey}`);
 
       const client = connectClient(publicKey, 'session-1', 'http://widget-host.example');
-      await waitFor(client, 'connect');
+      await waitFor(client, 'ready');
 
       for (let i = 0; i < 20; i++) {
         client.emit('message', { question: 'How many days for a refund?' });

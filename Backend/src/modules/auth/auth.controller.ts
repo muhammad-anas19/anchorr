@@ -14,7 +14,7 @@ export class AuthController {
   @Get('me')
   @UseGuards(JwtAuthGuard)
   me(@CurrentUser() user: CurrentUserPayload) {
-    return user;
+    return this.authService.me(user.userId);
   }
 
   @Post('register')

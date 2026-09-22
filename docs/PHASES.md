@@ -17,7 +17,7 @@
 | 9 | LLM provider interface & grounded answer generation | DONE | 8 | provider abstraction design, RAG prompt assembly, citation attribution |
 | 10 | Confidence scoring, refusal & escalation state machine | DONE | 9 | retrieval-based confidence threshold, Conversation state machine |
 | 11 | Public widget + real-time chat | DONE — see `docs/phases/11-public-widget-realtime-chat.md` | 2, 10 | WebSockets (Socket.IO), public API key + domain allowlist, separate widget build target. **Also where the Phase 1 auto-increment-PK decision was revisited for externally-exposed IDs** (a targeted `publicKey` token, not a project-wide PK migration). |
-| 12 | Agent console: human handoff | PENDING | 11 | presence tracking, optimistic concurrency on "claim" |
+| 12 | Agent console: human handoff | DONE (closing quiz not yet posed) — see `docs/phases/12-agent-console-human-handoff.md` | 11 | presence tracking, optimistic concurrency on "claim". **First phase to build `Frontend/`** — a minimal Next.js agent console. |
 | 13 | Hybrid search (vector + keyword) | PENDING | 8 | Postgres full-text search, rank fusion |
 | 14 | Semantic caching | PENDING | 9, 7 | similarity-keyed Redis caching, cache invalidation |
 | 15 | Usage metering & rate limiting | PENDING | 9 | metering as an event stream, Redis rate limiting |
