@@ -21,6 +21,6 @@ export function register(
   });
 }
 
-export function me(): Promise<{ userId: number; memberships: Membership[] }> {
+export function me(): Promise<{ userId: number; email: string; memberships: Membership[] }> {
   return request('/auth/me');
 }

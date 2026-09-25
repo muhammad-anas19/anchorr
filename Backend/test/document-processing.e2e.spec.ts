@@ -41,6 +41,7 @@ describe('Document processing queue (e2e)', () => {
   let queue: Queue<DocumentProcessingJobData & { throwForTesting?: boolean }>;
   let processor: DocumentProcessingProcessor;
   let embeddingProcessor: DocumentEmbeddingProcessor;
+  let embeddingQueue: Queue;
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
@@ -58,11 +59,19 @@ describe('Document processing queue (e2e)', () => {
     // the job document-processing's own enqueue step adds, which would otherwise run an
     // unawaited real API call in the background and bleed slow, flaky timing into whichever
     // test happens to run next in this same file.
-    const embeddingQueue: Queue = moduleRef.get(getQueueToken(DOCUMENT_EMBEDDING_QUEUE));
+    //
+    // Real bug this project hit and fixed: Queue.pause() (unlike Worker.pause()) is a
+    // durable, Redis-persisted GLOBAL pause affecting every worker connected to this queue
+    // name — not a scoped, in-memory pause for this one test file's app instance. Without
+    // the matching resume() in afterAll below, every run of this file permanently disabled
+    // the real document-embedding queue for the rest of this Redis instance's life, silently
+    // breaking every other suite (and the real Frontend) that depended on it actually running.
+    embeddingQueue = moduleRef.get(getQueueToken(DOCUMENT_EMBEDDING_QUEUE));
     await embeddingQueue.pause();
   });
 
   afterAll(async () => {
+    await embeddingQueue.resume();
     await app.close();
   });
 
@@ -108,7 +117,10 @@ describe('Document processing queue (e2e)', () => {
   // cover (retry/backoff, idempotency) via the cheap throwForTesting path that never touches
   // pdf-parse.
   function runProcessorDirectly(documentId: number): Promise<void> {
-    return processor.process({ data: { documentId } } as Job<DocumentProcessingJobData>);
+    return processor.process({
+      data: { documentId },
+      updateProgress: async () => {},
+    } as unknown as Job<DocumentProcessingJobData>);
   }
 
   it(
@@ -140,7 +152,10 @@ describe('Document processing queue (e2e)', () => {
 
       // Real Gemini call — the queue is paused (see beforeAll), so calling the processor
       // directly is the only thing that will actually embed this chunk.
-      await embeddingProcessor.process({ data: { documentId: document.id } } as any);
+      await embeddingProcessor.process({
+        data: { documentId: document.id },
+        updateProgress: async () => {},
+      } as any);
 
       const finalRow = await dataSource.getRepository(Document).findOneBy({ id: document.id });
       expect(finalRow?.status).toBe(DocumentStatus.READY);

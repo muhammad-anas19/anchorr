@@ -1,52 +1,24 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { me, Membership } from '../auth/api';
+import { useCallback, useState } from 'react';
 import { ApiError } from '../../shared/api/client';
-import { clearToken, getToken } from '../../shared/auth/token';
 import { ErrorBanner } from '../../shared/ui/ErrorBanner';
-import { WorkspacePicker } from './WorkspacePicker';
+import { useWorkspace } from '../../shared/workspace/WorkspaceContext';
 import { ConversationQueue } from './ConversationQueue';
 import { ConversationChat } from './ConversationChat';
 import { useAgentSocket } from './useAgentSocket';
 import { claimConversation, ConversationTurn, getConversationDetail, resolveConversation } from './api';
 
 export function ConsoleApp() {
-  const router = useRouter();
-  const [userId, setUserId] = useState<number | null>(null);
-  const [memberships, setMemberships] = useState<Membership[]>([]);
-  const [workspaceId, setWorkspaceId] = useState<number | null>(null);
+  const { workspaceId } = useWorkspace();
   const [openSessionId, setOpenSessionId] = useState<string | null>(null);
   const [turns, setTurns] = useState<ConversationTurn[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const { sessions, setSessions, liveMessages, joinConversation, sendAgentMessage } = useAgentSocket(workspaceId);
 
-  // Who am I, and which workspace(s) do I belong to.
-  useEffect(() => {
-    const token = getToken();
-    if (!token) {
-      router.replace('/login');
-      return;
-    }
-    me()
-      .then((result) => {
-        setUserId(result.userId);
-        setMemberships(result.memberships);
-        if (result.memberships.length === 1) {
-          setWorkspaceId(result.memberships[0].workspaceId);
-        }
-      })
-      .catch(() => {
-        clearToken();
-        router.replace('/login');
-      });
-  }, [router]);
-
   const openConversation = useCallback(
     async (sessionId: string) => {
-      if (!workspaceId) return;
       setError(null);
       try {
         const detail = await getConversationDetail(workspaceId, sessionId);
@@ -61,23 +33,20 @@ export function ConsoleApp() {
   );
 
   async function handleClaim(sessionId: string) {
-    if (!workspaceId) return;
     setError(null);
     try {
-      await claimConversation(workspaceId, sessionId);
-      setSessions((prev) =>
-        prev.map((s) => (s.sessionId === sessionId ? { ...s, status: 'claimed', claimedByUserId: userId } : s)),
-      );
+      const claimed = await claimConversation(workspaceId, sessionId);
+      setSessions((prev) => prev.map((s) => (s.sessionId === sessionId ? claimed : s)));
       await openConversation(sessionId);
     } catch (err) {
-      // A 409 here means another agent won the race (Q2/Q3/Q4) — refresh so this agent sees
-      // the real, current state instead of a stale "still available" row.
+      // A 409 here means another agent won the race (Q2/Q3/Q4) — the error banner is the
+      // real, current state; this agent's own stale "still available" row is now wrong.
       setError(err instanceof ApiError ? err.message : 'Could not claim this conversation.');
     }
   }
 
   async function handleResolve() {
-    if (!workspaceId || !openSessionId) return;
+    if (!openSessionId) return;
     try {
       await resolveConversation(workspaceId, openSessionId);
       setSessions((prev) => prev.filter((s) => s.sessionId !== openSessionId));
@@ -88,12 +57,8 @@ export function ConsoleApp() {
     }
   }
 
-  if (memberships.length > 1 && !workspaceId) {
-    return <WorkspacePicker memberships={memberships} onSelect={setWorkspaceId} />;
-  }
-
   return (
-    <main style={{ display: 'flex', height: '100vh' }}>
+    <div style={{ display: 'flex', height: '100%' }}>
       <ConversationQueue
         sessions={sessions}
         openSessionId={openSessionId}
@@ -115,6 +80,6 @@ export function ConsoleApp() {
           />
         )}
       </section>
-    </main>
+    </div>
   );
 }

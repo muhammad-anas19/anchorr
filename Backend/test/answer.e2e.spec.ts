@@ -211,7 +211,7 @@ describe('Answer (e2e)', () => {
           // A real, possible model behavior (per Q12: models don't always follow
           // instructions perfectly) — citing [1] (real) and [7] (doesn't exist, since
           // only one chunk was ever sent).
-          generate: async () => 'Refunds are available within 30 days [1], according to policy [7].',
+          generate: async () => ({ text: 'Refunds are available within 30 days [1], according to policy [7].', promptTokens: null, totalTokens: null }),
         })
         .compile();
       const isolatedApp = moduleRef.createNestApplication();
@@ -293,7 +293,7 @@ describe('Answer (e2e)', () => {
         .useValue({
           generate: async (systemPrompt: string) => {
             capturedPrompt = systemPrompt;
-            return 'Yes, 30 days from purchase [1].';
+            return { text: 'Yes, 30 days from purchase [1].', promptTokens: null, totalTokens: null };
           },
         })
         .compile();
@@ -341,7 +341,7 @@ describe('Answer (e2e)', () => {
         .useValue({
           generate: async (systemPrompt: string) => {
             capturedPrompt = systemPrompt;
-            return 'Refunds are available within 30 days [1].';
+            return { text: 'Refunds are available within 30 days [1].', promptTokens: null, totalTokens: null };
           },
         })
         .compile();

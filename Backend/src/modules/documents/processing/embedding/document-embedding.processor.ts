@@ -43,19 +43,26 @@ export class DocumentEmbeddingProcessor extends WorkerHost {
       where: { documentId },
       order: { chunkIndex: 'ASC' },
     });
+    const total = pendingChunks.length;
+    const alreadyDone = pendingChunks.filter((c) => c.embedding).length;
 
+    await job.updateProgress({ stage: 'embedding', completed: alreadyDone, total });
+
+    let completed = alreadyDone;
     for (const chunk of pendingChunks) {
       if (chunk.embedding) {
         continue;
       }
       const embedding = await this.embeddingProvider.embed(chunk.content);
       await this.chunks.update(chunk.id, { embedding });
+      completed += 1;
+      await job.updateProgress({ stage: 'embedding', completed, total });
     }
 
     // Only reached once every chunk in the loop above succeeded — a thrown error from
     // embeddingProvider.embed() propagates out of process() and fails the whole job,
     // leaving status at 'processing' so a retry picks up exactly where this attempt left off.
-    await this.documents.update(documentId, { status: DocumentStatus.READY });
+    await this.documents.update(documentId, { status: DocumentStatus.READY, readyAt: new Date() });
   }
 
   @OnWorkerEvent('failed')

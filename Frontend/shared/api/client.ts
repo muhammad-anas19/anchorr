@@ -14,10 +14,13 @@ export class ApiError extends Error {
 // any) as a Bearer header and normalizes error handling into a single ApiError shape.
 export async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = getToken();
+  const isFormData = options.body instanceof FormData;
+
   const res = await fetch(`${BACKEND_URL}${path}`, {
     ...options,
     headers: {
-      'Content-Type': 'application/json',
+      // FormData sets its own multipart boundary in Content-Type — never override it.
+      ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...options.headers,
     },
@@ -28,6 +31,8 @@ export async function request<T>(path: string, options: RequestInit = {}): Promi
     throw new ApiError(res.status, body.message ?? 'Request failed');
   }
 
-  if (res.status === 204) return undefined as T;
-  return res.json();
+  // A 204, or a 200 with no body (e.g. this project's DELETE endpoints), both come back
+  // with nothing to parse — res.json() would throw on an empty body.
+  const text = await res.text();
+  return (text ? JSON.parse(text) : undefined) as T;
 }

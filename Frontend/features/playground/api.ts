@@ -1,4 +1,4 @@
-import { ConversationStatus } from '../../database/entities/conversation-status.enum';
+import { request } from '../../shared/api/client';
 
 export interface Citation {
   index: number;
@@ -8,11 +8,6 @@ export interface Citation {
   distance: number;
 }
 
-// A trimmed view of every chunk retrieval actually returned for this question — not just
-// the ones the model chose to cite. Ephemeral, response-only data (like totalTokens below):
-// useful for a live "what did the model see" UI, but not persisted anywhere, unlike
-// status/minDistance/citations, which Phase 10 deliberately chose to keep for the state
-// machine's own sake.
 export interface RetrievedChunkSummary {
   chunkId: number;
   documentId: number;
@@ -24,9 +19,16 @@ export interface RetrievedChunkSummary {
 export interface AnswerResult {
   answer: string;
   citations: Citation[];
-  status: ConversationStatus;
+  status: 'answered' | 'refused' | 'escalated';
   minDistance: number | null;
   promptTokens: number | null;
   totalTokens: number | null;
   retrievedChunks: RetrievedChunkSummary[];
+}
+
+export function ask(workspaceId: number, question: string, sessionId: string): Promise<AnswerResult> {
+  return request(`/workspaces/${workspaceId}/ask`, {
+    method: 'POST',
+    body: JSON.stringify({ question, sessionId }),
+  });
 }

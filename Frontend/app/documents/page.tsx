@@ -1,10 +1,10 @@
-import { ConsoleApp } from '../../features/handoff/ConsoleApp';
+import { DocumentsPage } from '../../features/documents/DocumentsPage';
 import { DashboardShell } from '../../shared/workspace/DashboardShell';
 
-export default function ConsolePage() {
+export default function Documents() {
   return (
     <DashboardShell>
-      <ConsoleApp />
+      <DocumentsPage />
     </DashboardShell>
   );
 }

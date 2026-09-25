@@ -54,6 +54,11 @@ export class Document {
   @Column({ name: 'failure_reason', type: 'varchar', nullable: true })
   failureReason: string | null;
 
+  // Set once, by DocumentEmbeddingProcessor, the moment every chunk has a real embedding —
+  // the same instant status flips to READY. Null for anything not yet (or never) ready.
+  @Column({ name: 'ready_at', type: 'timestamp', nullable: true })
+  readyAt: Date | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 }

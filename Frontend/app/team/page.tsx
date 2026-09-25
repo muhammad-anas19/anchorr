@@ -1,10 +1,10 @@
-import { ConsoleApp } from '../../features/handoff/ConsoleApp';
+import { MembersPage } from '../../features/members/MembersPage';
 import { DashboardShell } from '../../shared/workspace/DashboardShell';
 
-export default function ConsolePage() {
+export default function Team() {
   return (
     <DashboardShell>
-      <ConsoleApp />
+      <MembersPage />
     </DashboardShell>
   );
 }

@@ -6,6 +6,7 @@ import { RetrievedChunk } from '../retrieval/retrieved-chunk.interface';
 import {
   ANSWER_GENERATION_PROVIDER,
   AnswerGenerationProvider,
+  GenerateResult,
 } from '../../generation/answer-generation-provider.interface';
 import { Conversation } from '../../database/entities/conversation.entity';
 import { ConversationStatus } from '../../database/entities/conversation-status.enum';
@@ -42,6 +43,14 @@ export class AnswerService {
     // returns regardless of quality would dilute a genuinely strong single match.
     const minDistance = chunks.length > 0 ? chunks[0].distance : null;
 
+    const retrievedChunks = chunks.map((chunk) => ({
+      chunkId: chunk.chunkId,
+      documentId: chunk.documentId,
+      originalFilename: chunk.originalFilename,
+      distance: chunk.distance,
+      snippet: chunk.content.slice(0, 160),
+    }));
+
     // Short-circuit: never call the generation LLM with nothing to ground it, or with only
     // weak, unlikely-to-be-relevant matches — see Phase 9's Q6 and Phase 10's own diagnostic.
     // A weak match is treated exactly like no match at all: refused, not answered. History is
@@ -51,7 +60,11 @@ export class AnswerService {
         answer: NO_INFORMATION_ANSWER,
         citations: [],
         status: ConversationStatus.REFUSED,
-      }, minDistance, sessionId);
+        minDistance,
+        promptTokens: null,
+        totalTokens: null,
+        retrievedChunks,
+      }, sessionId);
     }
 
     // Only fetched once we know we're actually calling the LLM — a refused/escalated turn
@@ -62,9 +75,9 @@ export class AnswerService {
     const history = sessionId ? await this.fetchRecentHistory(workspaceId, sessionId) : [];
 
     const systemPrompt = buildSystemPrompt(chunks, history);
-    let rawAnswer: string;
+    let generated: GenerateResult;
     try {
-      rawAnswer = await this.generationProvider.generate(systemPrompt, question);
+      generated = await this.generationProvider.generate(systemPrompt, question);
     } catch {
       // A genuine generation failure (Phase 9's real 500 case) is a concrete, real reason to
       // flag this for a human — "the AI tried and couldn't complete the answer" — unlike a
@@ -74,15 +87,23 @@ export class AnswerService {
         answer: ESCALATION_ANSWER,
         citations: [],
         status: ConversationStatus.ESCALATED,
-      }, minDistance, sessionId);
+        minDistance,
+        promptTokens: null,
+        totalTokens: null,
+        retrievedChunks,
+      }, sessionId);
     }
 
-    const citations = resolveCitations(rawAnswer, chunks);
+    const citations = resolveCitations(generated.text, chunks);
     return this.persistAndReturn(workspaceId, question, {
-      answer: rawAnswer,
+      answer: generated.text,
       citations,
       status: ConversationStatus.ANSWERED,
-    }, minDistance, sessionId);
+      minDistance,
+      promptTokens: generated.promptTokens,
+      totalTokens: generated.totalTokens,
+      retrievedChunks,
+    }, sessionId);
   }
 
   // Last 5 turns of the same session, oldest first — the order a transcript would read in,
@@ -102,7 +123,6 @@ export class AnswerService {
     workspaceId: number,
     question: string,
     result: AnswerResult,
-    minDistance: number | null,
     sessionId: string | null,
   ): Promise<AnswerResult> {
     await this.conversations.save({
@@ -111,7 +131,7 @@ export class AnswerService {
       question,
       answer: result.answer,
       status: result.status,
-      minDistance,
+      minDistance: result.minDistance,
       citations: result.citations,
     });
 
@@ -165,6 +185,7 @@ function resolveCitations(rawAnswer: string, chunks: RetrievedChunk[]): Citation
       chunkId: chunk.chunkId,
       documentId: chunk.documentId,
       originalFilename: chunk.originalFilename,
+      distance: chunk.distance,
     });
   }
   return citations.sort((a, b) => a.index - b.index);

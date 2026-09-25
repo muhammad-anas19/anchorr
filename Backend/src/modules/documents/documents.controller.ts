@@ -59,6 +59,14 @@ export class DocumentsController {
     return this.documentsService.getOne(workspaceId, documentId);
   }
 
+  @Get(':documentId/progress')
+  getProgress(
+    @Param('workspaceId', ParseIntPipe) workspaceId: number,
+    @Param('documentId', ParseIntPipe) documentId: number,
+  ) {
+    return this.documentsService.getProgress(workspaceId, documentId);
+  }
+
   @Delete(':documentId')
   @Roles(MembershipRole.OWNER, MembershipRole.AGENT)
   remove(

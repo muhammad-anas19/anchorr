@@ -27,7 +27,7 @@ export function RegisterForm() {
       // (AuthService.register, Phase 2) — there's no separate "create a workspace" step.
       const { accessToken } = await register(email, password, workspaceName);
       setToken(accessToken);
-      router.push('/console');
+      router.push('/documents');
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Something went wrong.');
     } finally {

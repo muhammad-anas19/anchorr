@@ -10,6 +10,7 @@ export interface StoredCitation {
   chunkId: number;
   documentId: number;
   originalFilename: string;
+  distance: number;
 }
 
 @Entity('conversations')

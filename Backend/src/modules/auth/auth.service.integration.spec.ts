@@ -124,6 +124,7 @@ describe('AuthService (integration)', () => {
     const result = await authService.me(user.id);
 
     expect(result.userId).toBe(user.id);
+    expect(result.email).toBe('anas@northwind.com');
     expect(result.memberships).toEqual([
       { workspaceId: expect.any(Number), workspaceName: 'Northwind Devices', role: 'owner' },
     ]);

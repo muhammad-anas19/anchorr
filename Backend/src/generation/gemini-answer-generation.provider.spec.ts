@@ -10,14 +10,17 @@ describe('GeminiAnswerGenerationProvider', () => {
   it(
     'generates a real answer, respecting the system prompt',
     async () => {
-      const answer = await provider.generate(
+      const result = await provider.generate(
         'You are a terse assistant. Reply with exactly one word, no punctuation.',
         'What color is the sky on a clear day?',
       );
 
-      expect(typeof answer).toBe('string');
-      expect(answer.trim().length).toBeGreaterThan(0);
-      expect(answer.toLowerCase()).toContain('blue');
+      expect(typeof result.text).toBe('string');
+      expect(result.text.trim().length).toBeGreaterThan(0);
+      expect(result.text.toLowerCase()).toContain('blue');
+      // Real, not estimated — verified against a live call this project's own SDK type
+      // docs claimed wasn't possible (see the provider's own comment).
+      expect(result.totalTokens).toBeGreaterThan(0);
     },
     15000,
   );
@@ -30,9 +33,9 @@ describe('GeminiAnswerGenerationProvider', () => {
         'reply with exactly: "I don\'t have information about that."\n\n' +
         'Context:\n[1] Our office hours are 9am to 5pm, Monday to Friday.';
 
-      const answer = await provider.generate(systemPrompt, 'What is the capital of France?');
+      const result = await provider.generate(systemPrompt, 'What is the capital of France?');
 
-      expect(answer).toContain("I don't have information about that");
+      expect(result.text).toContain("I don't have information about that");
     },
     15000,
   );

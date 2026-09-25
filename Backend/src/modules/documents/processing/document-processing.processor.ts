@@ -54,6 +54,12 @@ export class DocumentProcessingProcessor extends WorkerHost {
       throw new Error('Deliberate failure for testing retry/backoff behavior.');
     }
 
+    // Job progress (job.updateProgress) is Redis-only and non-durable — it's gone the
+    // instant the job finishes or the worker restarts, unlike `document.status`, which is
+    // the real, persisted source of truth in Postgres. It exists purely so a live UI can
+    // show *which* sub-step is running right now; nothing here depends on it surviving.
+    await job.updateProgress({ stage: 'parsing' });
+
     const buffer = await this.storage.read(document.storageKey);
     const { text, pageCount } = await extractText(buffer, document.mimeType);
 
@@ -72,6 +78,9 @@ export class DocumentProcessingProcessor extends WorkerHost {
     // wrote this row but crashed before the status update below, re-running lands on the
     // same final state instead of throwing a duplicate-key error on the UNIQUE constraint.
     await this.documentContents.upsert({ documentId, extractedText: text, pageCount }, ['documentId']);
+
+    const wordCount = text.trim().split(/\s+/).filter(Boolean).length;
+    await job.updateProgress({ stage: 'chunking', pageCount, wordCount });
 
     const chunks = chunkText(text);
     // Delete-then-insert, not upsert: a document can have a different NUMBER of chunks on
@@ -97,7 +106,14 @@ export class DocumentProcessingProcessor extends WorkerHost {
     // usable for retrieval (Phase 8) until every chunk has an embedding too. The embedding
     // job (a genuinely separate stage: a paid, rate-limited external API call, unlike the
     // free local work above) is what flips it to 'ready', once it actually earns that.
-    await this.embeddingQueue.add('embed', { documentId });
+    //
+    // A deterministic jobId (not BullMQ's default auto-generated one) makes this add()
+    // itself idempotent: if this whole process() ever runs twice for the same document —
+    // a real, observed case, not hypothetical, when BullMQ's own stall-detection (Phase 4)
+    // redelivers this job to a second worker while the first is still genuinely running —
+    // the second call's add() with the same jobId is a safe no-op instead of creating a
+    // real duplicate embedding job.
+    await this.embeddingQueue.add('embed', { documentId }, { jobId: `embed-${documentId}` });
   }
 
   @OnWorkerEvent('failed')

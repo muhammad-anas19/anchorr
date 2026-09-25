@@ -72,7 +72,7 @@ describe('DocumentEmbeddingProcessor', () => {
     };
     const processor = new DocumentEmbeddingProcessor(documents, chunks, provider);
 
-    await processor.process({ data: { documentId: document.id } } as Job<DocumentEmbeddingJobData>);
+    await processor.process({ data: { documentId: document.id }, updateProgress: async () => {} } as unknown as Job<DocumentEmbeddingJobData>);
 
     expect(calls).toBe(3);
     const finalDoc = await documents.findOneBy({ id: document.id });
@@ -93,7 +93,7 @@ describe('DocumentEmbeddingProcessor', () => {
     };
     const processor = new DocumentEmbeddingProcessor(documents, chunks, provider);
 
-    await processor.process({ data: { documentId: document.id } } as Job<DocumentEmbeddingJobData>);
+    await processor.process({ data: { documentId: document.id }, updateProgress: async () => {} } as unknown as Job<DocumentEmbeddingJobData>);
 
     // Only the 2 chunks that didn't already have an embedding should have triggered a call —
     // proving a retry doesn't re-pay for chunks a previous attempt already embedded.
@@ -120,7 +120,7 @@ describe('DocumentEmbeddingProcessor', () => {
       const processor = new DocumentEmbeddingProcessor(documents, chunks, provider);
 
       await expect(
-        processor.process({ data: { documentId: document.id } } as Job<DocumentEmbeddingJobData>),
+        processor.process({ data: { documentId: document.id }, updateProgress: async () => {} } as unknown as Job<DocumentEmbeddingJobData>),
       ).rejects.toThrow('Simulated Gemini API failure');
 
       const finalDoc = await documents.findOneBy({ id: document.id });
@@ -142,7 +142,7 @@ describe('DocumentEmbeddingProcessor', () => {
     const provider: EmbeddingProvider = { embed: async () => { calls++; return fakeVector(0); } };
     const processor = new DocumentEmbeddingProcessor(documents, chunks, provider);
 
-    await processor.process({ data: { documentId: document.id } } as Job<DocumentEmbeddingJobData>);
+    await processor.process({ data: { documentId: document.id }, updateProgress: async () => {} } as unknown as Job<DocumentEmbeddingJobData>);
 
     expect(calls).toBe(0);
   });

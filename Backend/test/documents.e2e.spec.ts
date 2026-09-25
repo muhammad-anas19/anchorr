@@ -3,14 +3,16 @@ import { Test } from '@nestjs/testing';
 import { DataSource } from 'typeorm';
 import * as jwt from 'jsonwebtoken';
 import request from 'supertest';
-import { rm, readdir } from 'fs/promises';
+import { rm, readdir, readFile } from 'fs/promises';
 import { join } from 'path';
 import { AppModule } from '../src/app.module';
 import { User } from '../src/database/entities/user.entity';
 import { Membership } from '../src/database/entities/membership.entity';
 import { MembershipRole } from '../src/database/entities/membership-role.enum';
+import { EMBEDDING_PROVIDER } from '../src/embedding/embedding-provider.interface';
 
 const STORAGE_DIR = join(process.cwd(), 'storage');
+const FIXTURES_DIR = join(process.cwd(), 'src/modules/documents/processing/extraction/fixtures');
 const FAKE_PDF = Buffer.concat([Buffer.from('%PDF-1.4\n'), Buffer.from('fake pdf content for testing')]);
 const FAKE_PDF_2 = Buffer.concat([Buffer.from('%PDF-1.4\n'), Buffer.from('a different fake pdf')]);
 const DISGUISED_FILE = Buffer.from('just plain text, not a real pdf at all');
@@ -191,6 +193,111 @@ describe('Documents (e2e)', () => {
       .set('Authorization', `Bearer ${viewerToken}`)
       .expect(200);
   });
+
+  it(
+    'list and detail responses carry a real chunk count and the uploader\'s own email',
+    async () => {
+      const token = await registerOwner();
+
+      const uploadRes = await request(app.getHttpServer())
+        .post('/workspaces/1/documents')
+        .set('Authorization', `Bearer ${token}`)
+        .attach('file', FAKE_PDF, 'report.pdf')
+        .expect(201);
+      const documentId = uploadRes.body.id;
+
+      // Checked immediately after upload, before the real background worker has any chance
+      // to create chunks — chunkCount should be a real, honest 0, not undefined or omitted.
+      const listRes = await request(app.getHttpServer())
+        .get('/workspaces/1/documents')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+      expect(listRes.body[0]).toMatchObject({ chunkCount: 0, uploadedByEmail: 'anas@northwind.com' });
+
+      const detailRes = await request(app.getHttpServer())
+        .get(`/workspaces/1/documents/${documentId}`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+      expect(detailRes.body).toMatchObject({ chunkCount: 0, uploadedByEmail: 'anas@northwind.com' });
+    },
+    15000,
+  );
+
+  it(
+    'the progress endpoint reflects a real, currently-running embedding job, then returns null once nothing is live',
+    async () => {
+      // A deliberately slow, controllable embedding provider — real enough to genuinely run
+      // the pipeline, slow enough to have time to observe the live 'embedding' stage before
+      // it finishes, matching this project's own established pattern for these scenarios.
+      const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
+        .overrideProvider(EMBEDDING_PROVIDER)
+        .useValue({
+          embed: async () => {
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+            return Array.from({ length: 768 }, (_, i) => i / 1000);
+          },
+        })
+        .compile();
+      const isolatedApp = moduleRef.createNestApplication();
+      isolatedApp.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+      await isolatedApp.init();
+      const isolatedDataSource = moduleRef.get(DataSource);
+
+      const registerRes = await request(isolatedApp.getHttpServer()).post('/auth/register').send({
+        email: 'anas@northwind.com',
+        password: 'correct-horse-battery',
+        workspaceName: 'Northwind Devices',
+      });
+      const token = registerRes.body.accessToken as string;
+
+      const pdfBuffer = await readFile(join(FIXTURES_DIR, 'sample.pdf'));
+      const uploadRes = await request(isolatedApp.getHttpServer())
+        .post('/workspaces/1/documents')
+        .set('Authorization', `Bearer ${token}`)
+        .attach('file', pdfBuffer, 'sample.pdf')
+        .expect(201);
+      const documentId = uploadRes.body.id;
+
+      // Poll until a live 'embedding' stage actually shows up — real background timing,
+      // not a fixed sleep, since exactly when the worker picks the job up isn't guaranteed.
+      let progress: { stage?: string } | null = null;
+      for (let attempt = 0; attempt < 150; attempt++) {
+        const res = await request(isolatedApp.getHttpServer())
+          .get(`/workspaces/1/documents/${documentId}/progress`)
+          .set('Authorization', `Bearer ${token}`)
+          .expect(200);
+        progress = res.body;
+        if (progress?.stage === 'embedding') break;
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      }
+      expect(progress?.stage).toBe('embedding');
+
+      // Wait for the document to actually finish, then confirm progress genuinely goes back
+      // to null — there's no live job left to report on once processing is truly done.
+      let finalStatus: string | undefined;
+      for (let attempt = 0; attempt < 30; attempt++) {
+        const [row] = await isolatedDataSource.query('SELECT status FROM documents WHERE id = $1', [documentId]);
+        finalStatus = row?.status;
+        if (finalStatus === 'ready' || finalStatus === 'failed') break;
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      }
+      expect(finalStatus).toBe('ready');
+
+      // A `null` controller return serializes as a genuinely empty body (0 bytes), not the
+      // text "null" — supertest's own convention parses an empty body as `{}`, not `null`,
+      // which is what this asserts on; the real Frontend's fetch-based client already treats
+      // an empty body as `undefined` correctly (shared/api/client.ts), so this is purely
+      // about matching supertest's parsing convention, not a real behavior difference.
+      const finalProgress = await request(isolatedApp.getHttpServer())
+        .get(`/workspaces/1/documents/${documentId}/progress`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+      expect(finalProgress.text).toBe('');
+
+      await isolatedApp.close();
+    },
+    60000,
+  );
 
   it('rejects a file larger than the configured limit before it is fully accepted', async () => {
     const token = await registerOwner();

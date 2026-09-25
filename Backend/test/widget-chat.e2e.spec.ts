@@ -20,7 +20,7 @@ describe('Widget chat gateway (e2e)', () => {
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(ANSWER_GENERATION_PROVIDER)
-      .useValue({ generate: async () => 'Refunds are available within 30 days [1].' })
+      .useValue({ generate: async () => ({ text: 'Refunds are available within 30 days [1].', promptTokens: null, totalTokens: null }) })
       .compile();
     app = moduleRef.createNestApplication();
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
@@ -206,7 +206,7 @@ describe('Widget chat gateway (e2e)', () => {
         .useValue({
           generate: async () => {
             await new Promise((resolve) => setTimeout(resolve, 1000));
-            return 'Refunds are available within 30 days [1].';
+            return { text: 'Refunds are available within 30 days [1].', promptTokens: null, totalTokens: null };
           },
         })
         .compile();

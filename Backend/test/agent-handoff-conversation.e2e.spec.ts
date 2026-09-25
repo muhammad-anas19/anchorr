@@ -270,7 +270,7 @@ describe('Agent takeover of a claimed conversation (e2e)', () => {
 
       const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
         .overrideProvider(ANSWER_GENERATION_PROVIDER)
-        .useValue({ generate: async () => 'Refunds are available within 30 days [1].' })
+        .useValue({ generate: async () => ({ text: 'Refunds are available within 30 days [1].', promptTokens: null, totalTokens: null }) })
         .compile();
       const isolatedApp = moduleRef.createNestApplication();
       isolatedApp.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));

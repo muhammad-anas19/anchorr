@@ -34,9 +34,13 @@ export class AuthService {
   // workspace(s) it belongs to and with what role — nothing before this phase ever needed
   // that, since every prior REST call already had a workspaceId in its URL.
   async me(userId: number) {
-    const memberships = await this.memberships.find({ where: { userId }, relations: { workspace: true } });
+    const [user, memberships] = await Promise.all([
+      this.users.findOneOrFail({ where: { id: userId } }),
+      this.memberships.find({ where: { userId }, relations: { workspace: true } }),
+    ]);
     return {
       userId,
+      email: user.email,
       memberships: memberships.map((m) => ({
         workspaceId: m.workspaceId,
         workspaceName: m.workspace.name,

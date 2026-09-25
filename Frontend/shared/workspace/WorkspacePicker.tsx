@@ -1,5 +1,5 @@
-import type { Membership } from '../auth/api';
-import { Button } from '../../shared/ui/Button';
+import type { Membership } from '../../features/auth/api';
+import { Button } from '../ui/Button';
 
 export function WorkspacePicker({
   memberships,

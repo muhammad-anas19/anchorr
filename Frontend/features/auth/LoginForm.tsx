@@ -24,7 +24,7 @@ export function LoginForm() {
     try {
       const { accessToken } = await login(email, password);
       setToken(accessToken);
-      router.push('/console');
+      router.push('/documents');
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Something went wrong.');
     } finally {
