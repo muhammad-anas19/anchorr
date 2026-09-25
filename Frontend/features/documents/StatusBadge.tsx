@@ -1,14 +1,16 @@
+import { TONE_COLORS, type Tone } from '../../shared/ui/primitives';
 import type { Document } from './api';
 
-const STYLES: Record<Document['status'], { bg: string; fg: string; label: string }> = {
-  uploaded: { bg: '#eef1fe', fg: '#2542b8', label: 'Queued' },
-  processing: { bg: '#eef1fe', fg: '#2542b8', label: 'Processing' },
-  ready: { bg: '#e7f5ee', fg: '#136c46', label: 'Ready' },
-  failed: { bg: '#fdeceb', fg: '#a72118', label: 'Failed' },
+const STATUS: Record<Document['status'], { tone: Tone; label: string }> = {
+  uploaded: { tone: 'accent', label: 'Queued' },
+  processing: { tone: 'accent', label: 'Processing' },
+  ready: { tone: 'ok', label: 'Ready' },
+  failed: { tone: 'err', label: 'Failed' },
 };
 
 export function StatusBadge({ status }: { status: Document['status'] }) {
-  const s = STYLES[status];
+  const { tone, label } = STATUS[status];
+  const { bg, fg } = TONE_COLORS[tone];
   return (
     <span
       style={{
@@ -18,14 +20,23 @@ export function StatusBadge({ status }: { status: Document['status'] }) {
         height: 22,
         padding: '0 8px',
         borderRadius: 6,
-        background: s.bg,
-        color: s.fg,
-        fontSize: 12,
-        fontWeight: 500,
+        background: bg,
+        color: fg,
+        font: '500 12px/1 var(--font-sans)',
       }}
     >
-      <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'currentColor' }} />
-      {s.label}
+      <span
+        style={{
+          width: 5,
+          height: 5,
+          borderRadius: '50%',
+          background: 'currentColor',
+          // A document mid-pipeline is genuinely still changing; the pulse says so without
+          // needing another column.
+          animation: status === 'processing' ? 'anc-pulse 1.8s infinite' : undefined,
+        }}
+      />
+      {label}
     </span>
   );
 }

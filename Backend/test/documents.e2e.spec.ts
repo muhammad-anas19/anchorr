@@ -10,6 +10,10 @@ import { User } from '../src/database/entities/user.entity';
 import { Membership } from '../src/database/entities/membership.entity';
 import { MembershipRole } from '../src/database/entities/membership-role.enum';
 import { EMBEDDING_PROVIDER } from '../src/embedding/embedding-provider.interface';
+import { getQueueToken } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
+import { DOCUMENT_PROCESSING_QUEUE } from '../src/modules/documents/processing/document-processing.constants';
+import { DOCUMENT_EMBEDDING_QUEUE } from '../src/modules/documents/processing/embedding/document-embedding.constants';
 
 const STORAGE_DIR = join(process.cwd(), 'storage');
 const FIXTURES_DIR = join(process.cwd(), 'src/modules/documents/processing/extraction/fixtures');
@@ -20,6 +24,8 @@ const DISGUISED_FILE = Buffer.from('just plain text, not a real pdf at all');
 describe('Documents (e2e)', () => {
   let app: INestApplication;
   let dataSource: DataSource;
+  let processingQueue: Queue;
+  let embeddingQueue: Queue;
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
@@ -27,6 +33,8 @@ describe('Documents (e2e)', () => {
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
     await app.init();
     dataSource = moduleRef.get(DataSource);
+    processingQueue = moduleRef.get(getQueueToken(DOCUMENT_PROCESSING_QUEUE));
+    embeddingQueue = moduleRef.get(getQueueToken(DOCUMENT_EMBEDDING_QUEUE));
   });
 
   afterAll(async () => {
@@ -36,6 +44,14 @@ describe('Documents (e2e)', () => {
   beforeEach(async () => {
     await dataSource.query('TRUNCATE conversation_sessions, conversations, document_chunks, document_contents, documents, refresh_tokens, memberships, users, workspaces RESTART IDENTITY');
     await rm(STORAGE_DIR, { recursive: true, force: true });
+    // Redis has to be reset for the same reason Postgres is, and it is easy to forget because
+    // only Postgres is visible in the line above. TRUNCATE ... RESTART IDENTITY sends document
+    // ids back to 1 every test, while BullMQ's job history persists — so a leftover job from an
+    // earlier test still matches `data.documentId === 1` and gets reported as the live job for
+    // a completely different document. Obliterating the two document queues (rather than a
+    // blanket FLUSHALL) keeps this scoped to what this suite actually enqueues.
+    await processingQueue.obliterate({ force: true });
+    await embeddingQueue.obliterate({ force: true });
   });
 
   async function registerOwner() {

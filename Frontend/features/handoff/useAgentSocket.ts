@@ -1,21 +1,27 @@
-import { useEffect, useState } from 'react';
+'use client';
+
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Socket } from 'socket.io-client';
 import { connectAgentSocket } from '../../shared/socket/connectAgentSocket';
 import { getToken } from '../../shared/auth/token';
-import { ConversationSession, listActiveConversations } from './api';
 
 export interface LiveMessage {
   from: 'customer' | 'agent' | 'ai';
   text: string;
 }
 
-// Owns the one agent socket connection for a workspace: keeps the escalated/claimed queue
-// live via the agents:{workspaceId} room (Phase 12), and collects whatever's been broadcast
-// into whichever conversation room this agent has joined via join-conversation.
-export function useAgentSocket(workspaceId: number | null) {
+// Owns the one agent socket connection for a workspace. It no longer holds the queue itself:
+// the queue is server-paginated and filtered now, so patching a local copy on every event
+// would fight the current page/filter. Instead an event just signals "the queue changed" and
+// the panels refetch what they are actually showing.
+export function useAgentSocket(workspaceId: number | null, onQueueChanged: () => void) {
   const [socket, setSocket] = useState<Socket | null>(null);
-  const [sessions, setSessions] = useState<ConversationSession[]>([]);
   const [liveMessages, setLiveMessages] = useState<LiveMessage[]>([]);
+
+  // Held in a ref so the effect below depends only on workspaceId — a parent passing an
+  // inline callback must not tear down and rebuild the socket on every render.
+  const onQueueChangedRef = useRef(onQueueChanged);
+  onQueueChangedRef.current = onQueueChanged;
 
   useEffect(() => {
     if (!workspaceId) return;
@@ -25,23 +31,15 @@ export function useAgentSocket(workspaceId: number | null) {
     const agentSocket = connectAgentSocket(token, workspaceId);
     setSocket(agentSocket);
 
-    const refreshQueue = () => {
-      listActiveConversations(workspaceId).then(setSessions).catch(() => {});
-    };
-
-    agentSocket.on('session-escalated', refreshQueue);
-    agentSocket.on('session-claimed', (payload: { sessionId: string; claimedByUserId: number }) => {
-      setSessions((prev) =>
-        prev.map((s) =>
-          s.sessionId === payload.sessionId
-            ? { ...s, status: 'claimed', claimedByUserId: payload.claimedByUserId }
-            : s,
-        ),
-      );
-    });
-    agentSocket.on('session-resolved', (payload: { sessionId: string }) => {
-      setSessions((prev) => prev.filter((s) => s.sessionId !== payload.sessionId));
-    });
+    const changed = () => onQueueChangedRef.current();
+    // 'ready' fires only after the gateway's async handleConnection has finished registering
+    // this socket in AgentPresenceService. Refetching here is what stops the page from
+    // showing "1 agent online" in the header while the presence list still says Offline —
+    // the panels were fetched before this connection existed.
+    agentSocket.on('ready', changed);
+    agentSocket.on('session-escalated', changed);
+    agentSocket.on('session-claimed', changed);
+    agentSocket.on('session-resolved', changed);
     agentSocket.on('customer-message', (payload: { question: string }) => {
       setLiveMessages((prev) => [...prev, { from: 'customer', text: payload.question }]);
     });
@@ -52,21 +50,25 @@ export function useAgentSocket(workspaceId: number | null) {
       setLiveMessages((prev) => [...prev, { from: 'ai', text: payload.answer }]);
     });
 
-    refreshQueue();
-
     return () => {
       agentSocket.disconnect();
     };
   }, [workspaceId]);
 
-  function joinConversation(sessionId: string) {
-    setLiveMessages([]);
-    socket?.emit('join-conversation', { sessionId });
-  }
+  const joinConversation = useCallback(
+    (sessionId: string) => {
+      setLiveMessages([]);
+      socket?.emit('join-conversation', { sessionId });
+    },
+    [socket],
+  );
 
-  function sendAgentMessage(sessionId: string, message: string) {
-    socket?.emit('agent-message', { sessionId, message });
-  }
+  const sendAgentMessage = useCallback(
+    (sessionId: string, message: string) => {
+      socket?.emit('agent-message', { sessionId, message });
+    },
+    [socket],
+  );
 
-  return { sessions, setSessions, liveMessages, joinConversation, sendAgentMessage };
+  return { liveMessages, joinConversation, sendAgentMessage };
 }

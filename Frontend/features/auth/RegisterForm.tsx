@@ -4,7 +4,7 @@ import { FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { register } from './api';
-import { ApiError } from '../../shared/api/client';
+import { notifySuccess, toMessage } from '../../shared/ui/toast';
 import { setToken } from '../../shared/auth/token';
 import { Button } from '../../shared/ui/Button';
 import { TextField } from '../../shared/ui/TextField';
@@ -27,9 +27,10 @@ export function RegisterForm() {
       // (AuthService.register, Phase 2) — there's no separate "create a workspace" step.
       const { accessToken } = await register(email, password, workspaceName);
       setToken(accessToken);
+      notifySuccess(`Workspace “${workspaceName}” created — you're its owner.`);
       router.push('/documents');
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Something went wrong.');
+      setError(toMessage(err, 'Something went wrong.'));
     } finally {
       setSubmitting(false);
     }

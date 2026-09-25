@@ -1,7 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { RetrievalService } from '../retrieval/retrieval.service';
+import { DEFAULT_K, RetrievalService } from '../retrieval/retrieval.service';
+import { GENERATION_MODEL } from '../../generation/gemini-answer-generation.provider';
 import { RetrievedChunk } from '../retrieval/retrieved-chunk.interface';
 import {
   ANSWER_GENERATION_PROVIDER,
@@ -11,7 +12,7 @@ import {
 import { Conversation } from '../../database/entities/conversation.entity';
 import { ConversationStatus } from '../../database/entities/conversation-status.enum';
 import { HandoffService } from '../handoff/handoff.service';
-import { AnswerResult, Citation } from './answer-result.interface';
+import { AnswerConfig, AnswerResult, Citation } from './answer-result.interface';
 
 const NO_INFORMATION_ANSWER = "I don't have information about that.";
 const ESCALATION_ANSWER =
@@ -23,7 +24,7 @@ const CITATION_PATTERN = /\[(\d+)\]/g;
 // -phrased related question in Phase 8's own test scored ~0.38), while a genuinely unrelated
 // question scored ~0.56. 0.45 sits between the observed related and unrelated ranges. Tunable
 // once Phase 17 (Evaluations) gives real outcome data — not asserted as permanently correct.
-const CONFIDENT_DISTANCE_THRESHOLD = 0.45;
+export const CONFIDENT_DISTANCE_THRESHOLD = 0.45;
 
 @Injectable()
 export class AnswerService {
@@ -33,6 +34,19 @@ export class AnswerService {
     @InjectRepository(Conversation) private readonly conversations: Repository<Conversation>,
     private readonly handoffService: HandoffService,
   ) {}
+
+  // What the playground's retrieval inspector reports, sourced from the real constants this
+  // service and RetrievalService actually run on rather than duplicated in the UI — if the
+  // threshold moves, the number on screen moves with it.
+  async getConfig(workspaceId: number): Promise<AnswerConfig> {
+    return {
+      searchMode: 'Vector',
+      topK: DEFAULT_K,
+      model: GENERATION_MODEL,
+      confidenceThreshold: CONFIDENT_DISTANCE_THRESHOLD,
+      searchableChunks: await this.retrievalService.countSearchableChunks(workspaceId),
+    };
+  }
 
   async answer(workspaceId: number, question: string, sessionId: string | null = null): Promise<AnswerResult> {
     const chunks = await this.retrievalService.retrieveRelevantChunks(workspaceId, question);

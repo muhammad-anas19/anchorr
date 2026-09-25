@@ -1,5 +1,8 @@
+'use client';
+
 import { useRef, useState } from 'react';
-import { Button } from '../../shared/ui/Button';
+import { Icon } from '../../shared/ui/Icon';
+import { notifyError, notifySuccess } from '../../shared/ui/toast';
 import { uploadDocument, Document } from './api';
 
 export function UploadButton({
@@ -11,24 +14,28 @@ export function UploadButton({
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [progress, setProgress] = useState<number | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
   async function handleFileChosen(file: File) {
-    setError(null);
     setProgress(0);
     try {
       const doc = await uploadDocument(workspaceId, file, setProgress);
+      // Says "queued", not "uploaded", because that is what actually happened: the HTTP
+      // response returns before parsing, chunking or embedding have run.
+      notifySuccess(`“${doc.originalFilename}” uploaded — queued for processing.`);
       onUploaded(doc);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Upload failed.');
+      notifyError(err, 'Upload failed.');
     } finally {
       setProgress(null);
+      // Without this, choosing the same file twice in a row fires no change event at all.
       if (inputRef.current) inputRef.current.value = '';
     }
   }
 
+  const busy = progress !== null;
+
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+    <>
       <input
         ref={inputRef}
         type="file"
@@ -39,10 +46,27 @@ export function UploadButton({
           if (file) handleFileChosen(file);
         }}
       />
-      <Button onClick={() => inputRef.current?.click()} disabled={progress !== null}>
-        {progress !== null ? `Uploading… ${progress}%` : 'Upload document'}
-      </Button>
-      {error && <span style={{ color: '#dc2626', fontSize: 12.5 }}>{error}</span>}
-    </div>
+      <button
+        onClick={() => inputRef.current?.click()}
+        disabled={busy}
+        className="anc-btn"
+        style={{
+          height: 30,
+          padding: '0 12px',
+          borderRadius: 7,
+          border: 0,
+          background: 'var(--btn-bg)',
+          color: 'var(--btn-fg)',
+          font: '500 12.5px/1 var(--font-sans)',
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 7,
+          opacity: busy ? 0.6 : 1,
+        }}
+      >
+        <Icon name="upload" size={13} strokeWidth={1.6} />
+        {busy ? `Uploading… ${progress}%` : 'Upload document'}
+      </button>
+    </>
   );
 }

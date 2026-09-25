@@ -51,6 +51,19 @@ export class ConversationSession {
   @Column({ name: 'claimed_at', type: 'timestamp', nullable: true })
   claimedAt: Date | null;
 
+  // Distinct from createdAt: a session row can be created as OPEN and escalate much later,
+  // so "how long has this been waiting for a human" is only answerable from the moment it
+  // actually entered the queue. Nullable because a session that never escalated has no
+  // meaningful value here — not because the time is unknown.
+  @Column({ name: 'escalated_at', type: 'timestamp', nullable: true })
+  escalatedAt: Date | null;
+
+  // Deliberately not derived from updatedAt: updatedAt moves on ANY write (a claim, a
+  // status correction), so counting "resolved today" off it would silently include sessions
+  // resolved days ago but touched since.
+  @Column({ name: 'resolved_at', type: 'timestamp', nullable: true })
+  resolvedAt: Date | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

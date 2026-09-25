@@ -2,8 +2,8 @@
 
 import { FormEvent, useEffect, useState } from 'react';
 import { useWorkspace } from '../../shared/workspace/WorkspaceContext';
-import { ApiError } from '../../shared/api/client';
 import { ErrorBanner } from '../../shared/ui/ErrorBanner';
+import { notifyError, notifySuccess } from '../../shared/ui/toast';
 import { Button } from '../../shared/ui/Button';
 import { TextField } from '../../shared/ui/TextField';
 import { getWidgetSettings, updateAllowedOrigins, WidgetSettings } from './api';
@@ -21,7 +21,7 @@ export function WidgetSettingsPage() {
   useEffect(() => {
     getWidgetSettings(workspaceId)
       .then(setSettings)
-      .catch((err) => setError(err instanceof ApiError ? err.message : 'Could not load widget settings.'));
+      .catch((err) => notifyError(err, 'Could not load widget settings.'));
   }, [workspaceId]);
 
   async function handleAddOrigin(event: FormEvent) {
@@ -29,6 +29,8 @@ export function WidgetSettingsPage() {
     setError(null);
     const origin = newOrigin.trim();
     if (!ORIGIN_PATTERN.test(origin)) {
+      // Stays an inline message rather than a toast: it belongs next to the field that is
+      // wrong, and it is a validation hint, not the result of an operation.
       setError('Enter an origin like https://example.com — no path, no trailing slash.');
       return;
     }
@@ -37,8 +39,9 @@ export function WidgetSettingsPage() {
       const updated = await updateAllowedOrigins(workspaceId, [...settings.allowedOrigins, origin]);
       setSettings(updated);
       setNewOrigin('');
+      notifySuccess(`${origin} can now load the widget.`);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not update the allowlist.');
+      notifyError(err, 'Could not update the allowlist.');
     }
   }
 
@@ -51,8 +54,13 @@ export function WidgetSettingsPage() {
         settings.allowedOrigins.filter((o) => o !== origin),
       );
       setSettings(updated);
+      notifySuccess(
+        updated.allowedOrigins.length === 0
+          ? `${origin} removed — the widget now loads nowhere, since an empty allowlist fails closed.`
+          : `${origin} removed from the allowlist.`,
+      );
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not update the allowlist.');
+      notifyError(err, 'Could not update the allowlist.');
     }
   }
 

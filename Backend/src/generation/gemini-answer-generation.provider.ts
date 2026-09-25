@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { GoogleGenAI } from '@google/genai';
 import { AnswerGenerationProvider, GenerateOptions, GenerateResult } from './answer-generation-provider.interface';
 
-const GENERATION_MODEL = 'gemini-3.6-flash';
+export const GENERATION_MODEL = 'gemini-3.6-flash';
 const DEFAULT_TEMPERATURE = 0.2;
 
 @Injectable()

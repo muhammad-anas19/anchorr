@@ -1,19 +1,153 @@
+/*
+ * Design tokens copied verbatim from Anchor_Prototype.html. Every colour in the app resolves
+ * through one of these variables — no component hardcodes a hex value, which is what makes
+ * the dark theme a single attribute flip on <html> rather than a per-component branch.
+ */
+
+:root,
+[data-theme='light'] {
+  --bg: #f7f7f6;
+  --surface: #ffffff;
+  --surface-2: #fafafa;
+  --border: #e7e7e4;
+  --border-2: #d8d8d3;
+  --fg: #17171a;
+  --muted: #6b6b73;
+  --faint: #9a9aa2;
+  --accent: #3459e6;
+  --accent-fg: #2542b8;
+  --accent-soft: #eef1fe;
+  --ok: #136c46;
+  --ok-soft: #e7f5ee;
+  --warn: #8a5300;
+  --warn-soft: #fdf2e0;
+  --err: #a72118;
+  --err-soft: #fdeceb;
+  --btn-bg: #17171a;
+  --btn-fg: #ffffff;
+  --track: #eeeeec;
+  --shadow: 0 1px 2px rgba(16, 16, 20, 0.05);
+}
+
+[data-theme='dark'] {
+  --bg: #0b0b0d;
+  --surface: #131316;
+  --surface-2: #18181c;
+  --border: #26262b;
+  --border-2: #35353c;
+  --fg: #f1f1f3;
+  --muted: #9b9ba4;
+  --faint: #70707a;
+  --accent: #8ba0ff;
+  --accent-fg: #adbcff;
+  --accent-soft: #191d30;
+  --ok: #57d99b;
+  --ok-soft: #10251b;
+  --warn: #e0a860;
+  --warn-soft: #271c0c;
+  --err: #ff9086;
+  --err-soft: #2b1412;
+  --btn-bg: #f1f1f3;
+  --btn-fg: #0b0b0d;
+  --track: #24242a;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
 * {
   box-sizing: border-box;
 }
 
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  background: #f9fafb;
-  color: #111827;
+  font-family: var(--font-sans), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 14px;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  color: var(--accent-fg);
+  text-decoration: underline;
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
 }
 
 button {
-  font-family: inherit;
   cursor: pointer;
 }
 
-input {
-  font-family: inherit;
+/* The prototype's own animations, used by the typing indicator and the live-status dot. */
+@keyframes anc-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes anc-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(130, 130, 140, 0.35);
+  border-radius: 8px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+
+/*
+ * Hover states the prototype expresses with a style-hover attribute. Written as real CSS
+ * classes because inline React styles cannot express :hover at all — this is the one thing
+ * the prototype's inline-style approach genuinely cannot be ported one-to-one.
+ */
+.anc-row-hover:hover {
+  background: var(--surface-2);
+}
+
+.anc-border-hover:hover {
+  border-color: var(--border-2);
+}
+
+.anc-accent-hover:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.anc-btn:hover {
+  opacity: 0.9;
+}
+
+.anc-icon-btn:hover {
+  color: var(--fg);
+  border-color: var(--border-2);
+}
+
+.anc-nav-item:hover {
+  background: var(--surface-2);
+}
+
+.anc-chip:hover {
+  border-color: var(--border-2);
+  color: var(--fg);
 }

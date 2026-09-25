@@ -4,7 +4,7 @@ import { DataSource } from 'typeorm';
 import { EMBEDDING_PROVIDER, EmbeddingProvider } from '../../embedding/embedding-provider.interface';
 import { RetrievedChunk } from './retrieved-chunk.interface';
 
-const DEFAULT_K = 5;
+export const DEFAULT_K = 5;
 
 @Injectable()
 export class RetrievalService {
@@ -46,5 +46,19 @@ export class RetrievalService {
       ...row,
       distance: Number(row.distance),
     }));
+  }
+
+  // How many chunks a question in this workspace is actually searched against. Counts only
+  // embedded chunks, because a chunk with a NULL embedding is invisible to the query above —
+  // reporting the raw chunk count would overstate what retrieval can really see.
+  async countSearchableChunks(workspaceId: number): Promise<number> {
+    const rows = await this.dataSource.query(
+      `SELECT COUNT(*)::int AS count
+       FROM document_chunks c
+       JOIN documents d ON d.id = c.document_id
+       WHERE d.workspace_id = $1 AND c.embedding IS NOT NULL`,
+      [workspaceId],
+    );
+    return rows[0]?.count ?? 0;
   }
 }

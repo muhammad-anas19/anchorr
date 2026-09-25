@@ -1,44 +1,153 @@
-import type { AnswerResult } from './api';
+'use client';
 
+import { TONE_COLORS, TypingDots, type Tone } from '../../shared/ui/primitives';
+import { chunkCountLabel, relevancePercent } from './RetrievalInspector';
+import type { AnswerConfig, AnswerResult } from './api';
+
+// A turn exists the moment the question is sent, not when the answer arrives — which is why
+// `result` is nullable. Three real states: in flight, answered, failed.
 export interface Turn {
+  id: string;
   question: string;
-  result: AnswerResult;
-  responseTimeMs: number;
+  result: AnswerResult | null;
+  responseTimeMs: number | null;
+  error: string | null;
 }
 
-const STATUS_STYLE: Record<AnswerResult['status'], { badgeBg: string; badgeFg: string; border: string }> = {
-  answered: { badgeBg: '#eef1fe', badgeFg: '#2542b8', border: '#e7e7e4' },
-  refused: { badgeBg: '#fdf2e0', badgeFg: '#8a5300', border: '#e0a860' },
-  escalated: { badgeBg: '#fdeceb', badgeFg: '#a72118', border: '#a72118' },
+const STATUS_TONE: Record<AnswerResult['status'], Tone> = {
+  answered: 'accent',
+  refused: 'warn',
+  escalated: 'err',
 };
 
-function confidencePercent(minDistance: number | null): number | null {
+// Confidence is the complement of the closest chunk's real cosine distance — the same signal
+// the Backend's own refusal threshold is measured against, not a separate score.
+function confidence(minDistance: number | null): number | null {
   if (minDistance === null) return null;
   return Math.max(0, Math.min(1, 1 - minDistance));
 }
 
-export function ChatTurn({ turn, onKeepChatting }: { turn: Turn; onKeepChatting: () => void }) {
+// The prototype tags each source with a file-type chip. Derived from the real filename, so a
+// document with no recognisable extension gets a neutral chip rather than a wrong one.
+function fileKind(filename: string): { label: string; tone: Tone } {
+  const ext = filename.split('.').pop()?.toLowerCase();
+  if (ext === 'pdf') return { label: 'PDF', tone: 'err' };
+  if (ext === 'docx' || ext === 'doc') return { label: 'DOC', tone: 'accent' };
+  return { label: 'FILE', tone: 'neutral' };
+}
+
+export function ChatTurn({
+  turn,
+  config,
+  onKeepChatting,
+  onRetry,
+}: {
+  turn: Turn;
+  config: AnswerConfig | null;
+  onKeepChatting: () => void;
+  onRetry: (turn: Turn) => void;
+}) {
   const { question, result, responseTimeMs } = turn;
-  const style = STATUS_STYLE[result.status];
-  const confidence = confidencePercent(result.minDistance);
+
+  // The question bubble renders identically in all three states — it is already true the
+  // moment it is sent, and nothing about the response changes it.
+  const questionBubble = (
+    <div
+      style={{
+        alignSelf: 'flex-end',
+        maxWidth: '78%',
+        background: 'var(--btn-bg)',
+        color: 'var(--btn-fg)',
+        padding: '10px 14px',
+        borderRadius: '12px 12px 4px 12px',
+        fontSize: 13.5,
+        lineHeight: 1.55,
+        // A sent-but-unanswered message is slightly faded: it is real and on screen, but the
+        // exchange it belongs to is not finished yet.
+        opacity: result === null && turn.error === null ? 0.72 : 1,
+        transition: 'opacity .15s ease',
+      }}
+    >
+      {question}
+    </div>
+  );
+
+  if (turn.error !== null) {
+    return (
+      <>
+        {questionBubble}
+        <div style={{ maxWidth: '88%' }}>
+          <div
+            style={{
+              background: 'var(--surface)',
+              border: '1px solid var(--err)',
+              borderRadius: '4px 12px 12px 12px',
+              padding: '12px 14px',
+              fontSize: 13,
+              lineHeight: 1.6,
+              color: 'var(--err)',
+            }}
+          >
+            {turn.error}
+            {/* The question is still on screen, so resending it must not require retyping. */}
+            <div style={{ marginTop: 10 }}>
+              <button
+                onClick={() => onRetry(turn)}
+                className="anc-border-hover"
+                style={{
+                  height: 28,
+                  padding: '0 11px',
+                  borderRadius: 7,
+                  border: '1px solid var(--border)',
+                  background: 'var(--surface)',
+                  color: 'var(--fg)',
+                  font: '500 12px/1 var(--font-sans)',
+                }}
+              >
+                Retry
+              </button>
+            </div>
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  if (result === null) {
+    return (
+      <>
+        {questionBubble}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--muted)', fontSize: 12.5 }}>
+          <span
+            style={{
+              width: 20,
+              height: 20,
+              borderRadius: 6,
+              background: 'var(--accent-soft)',
+              color: 'var(--accent-fg)',
+              display: 'grid',
+              placeItems: 'center',
+              font: '600 10px/1 var(--font-sans)',
+            }}
+          >
+            AI
+          </span>
+          <TypingDots />
+          <span style={{ font: '400 11.5px/1 var(--font-mono)', color: 'var(--faint)' }}>
+            {config ? `searching ${chunkCountLabel(config.searchableChunks)}` : 'searching…'}
+          </span>
+        </div>
+      </>
+    );
+  }
+
+  const tone = STATUS_TONE[result.status];
+  const score = confidence(result.minDistance);
 
   return (
-    <div>
-      <div
-        style={{
-          alignSelf: 'flex-end',
-          maxWidth: '78%',
-          marginLeft: 'auto',
-          background: '#17171a',
-          color: 'white',
-          padding: '10px 14px',
-          borderRadius: '12px 12px 4px 12px',
-          fontSize: 13.5,
-          marginBottom: 10,
-        }}
-      >
-        {question}
-      </div>
+    <>
+      {questionBubble}
+
       <div style={{ maxWidth: '88%' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
           <span
@@ -46,29 +155,34 @@ export function ChatTurn({ turn, onKeepChatting }: { turn: Turn; onKeepChatting:
               width: 20,
               height: 20,
               borderRadius: 6,
-              background: style.badgeBg,
-              color: style.badgeFg,
+              background: TONE_COLORS[tone].bg,
+              color: TONE_COLORS[tone].fg,
               display: 'grid',
               placeItems: 'center',
-              fontSize: 10,
-              fontWeight: 600,
+              font: '600 10px/1 var(--font-sans)',
             }}
           >
             AI
           </span>
-          <span style={{ fontSize: 12, color: '#6b6b73' }}>Anchor Assistant</span>
-          <span style={{ fontSize: 11, color: style.badgeFg, fontFamily: 'monospace' }}>
-            {result.status === 'answered' &&
-              confidence !== null &&
-              `confidence ${confidence.toFixed(2)} · ${(responseTimeMs / 1000).toFixed(1)}s${result.totalTokens ? ` · ${result.totalTokens.toLocaleString()} tokens` : ''}`}
-            {result.status === 'refused' && confidence !== null && `confidence ${confidence.toFixed(2)} · refused`}
-            {result.status === 'escalated' && 'escalated'}
+          <span style={{ font: '500 12px/1 var(--font-sans)', color: 'var(--muted)' }}>Anchor Assistant</span>
+          <span
+            style={{
+              font: '400 11px/1 var(--font-mono)',
+              color: result.status === 'answered' ? 'var(--faint)' : TONE_COLORS[tone].fg,
+            }}
+          >
+            {score !== null && `confidence ${score.toFixed(2)}`}
+            {result.status === 'answered' && responseTimeMs !== null && ` · ${(responseTimeMs / 1000).toFixed(1)}s`}
+            {result.status === 'answered' && result.totalTokens !== null && ` · ${result.totalTokens.toLocaleString()} tokens`}
+            {result.status === 'refused' && ' · refused'}
+            {result.status === 'escalated' && ' · escalated'}
           </span>
         </div>
+
         <div
           style={{
-            background: 'white',
-            border: `1px solid ${style.border}`,
+            background: 'var(--surface)',
+            border: `1px solid ${result.status === 'answered' ? 'var(--border)' : TONE_COLORS[tone].fg}`,
             borderRadius: '4px 12px 12px 12px',
             padding: '14px 16px',
             fontSize: 13.5,
@@ -77,75 +191,124 @@ export function ChatTurn({ turn, onKeepChatting }: { turn: Turn; onKeepChatting:
         >
           <p style={{ margin: 0 }}>{result.answer}</p>
 
-          {result.status === 'answered' && result.citations.length > 0 && (
-            <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid #e7e7e4' }}>
-              <div style={{ fontSize: 10.5, fontWeight: 600, letterSpacing: 0.5, textTransform: 'uppercase', color: '#9a9aa2', marginBottom: 9 }}>
+          {result.citations.length > 0 && (
+            <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
+              <div
+                style={{
+                  font: '600 10.5px/1 var(--font-sans)',
+                  letterSpacing: '.07em',
+                  textTransform: 'uppercase',
+                  color: 'var(--faint)',
+                  marginBottom: 9,
+                }}
+              >
                 Sources
               </div>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {result.citations.map((c) => (
-                  <span
-                    key={c.index}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: 8,
-                      padding: '7px 10px',
-                      border: '1px solid #e7e7e4',
-                      background: '#fafafa',
-                      borderRadius: 8,
-                      fontSize: 12.5,
-                    }}
-                  >
-                    [{c.index}] {c.originalFilename}
-                    <span style={{ fontSize: 11, fontFamily: 'monospace', color: '#136c46' }}>
-                      {Math.round(Math.max(0, Math.min(1, 1 - c.distance)) * 100)}%
+                {result.citations.map((citation) => {
+                  const kind = fileKind(citation.originalFilename);
+                  return (
+                    <span
+                      key={citation.index}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        padding: '7px 10px',
+                        border: '1px solid var(--border)',
+                        background: 'var(--surface-2)',
+                        borderRadius: 8,
+                      }}
+                    >
+                      <span
+                        style={{
+                          font: '600 9.5px/1 var(--font-mono)',
+                          color: TONE_COLORS[kind.tone].fg,
+                          background: TONE_COLORS[kind.tone].bg,
+                          padding: 4,
+                          borderRadius: 4,
+                        }}
+                      >
+                        {kind.label}
+                      </span>
+                      <span style={{ font: '500 12.5px/1 var(--font-sans)', color: 'var(--fg)' }}>
+                        {citation.originalFilename}
+                      </span>
+                      <span
+                        style={{
+                          font: '500 11px/1 var(--font-mono)',
+                          color: 'var(--ok)',
+                          background: 'var(--ok-soft)',
+                          padding: '3px 5px',
+                          borderRadius: 4,
+                        }}
+                      >
+                        {relevancePercent(citation.distance)}%
+                      </span>
                     </span>
-                  </span>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
 
           {result.status === 'refused' && (
-            <div style={{ display: 'flex', gap: 8, marginTop: 13, flexWrap: 'wrap' }}>
-              <button
-                title="This is a preview of what your customers see — staff replies happen from the Agent console."
-                style={{
-                  height: 31,
-                  padding: '0 12px',
-                  borderRadius: 7,
-                  background: '#17171a',
-                  color: 'white',
-                  border: 0,
-                  fontSize: 12.5,
-                  fontWeight: 500,
-                  opacity: 0.5,
-                  cursor: 'default',
-                }}
-              >
-                Talk to an agent
-              </button>
-              <button
-                onClick={onKeepChatting}
-                style={{
-                  height: 31,
-                  padding: '0 12px',
-                  borderRadius: 7,
-                  background: 'white',
-                  color: '#17171a',
-                  border: '1px solid #e7e7e4',
-                  fontSize: 12.5,
-                  fontWeight: 500,
-                  cursor: 'pointer',
-                }}
-              >
-                Keep chatting
-              </button>
-            </div>
+            <>
+              <div style={{ display: 'flex', gap: 8, marginTop: 13, flexWrap: 'wrap' }}>
+                {/* Inert on purpose: this is a staff preview of what a customer sees. A
+                    customer escalates by continuing to fail, not by pressing a button —
+                    Phase 10's state machine has no manual-escalation path to call. */}
+                <button
+                  disabled
+                  title="This is a preview of what your customers see. Escalation happens automatically — there is no manual hand-off endpoint."
+                  style={{
+                    height: 31,
+                    padding: '0 12px',
+                    borderRadius: 7,
+                    background: 'var(--btn-bg)',
+                    color: 'var(--btn-fg)',
+                    border: 0,
+                    font: '500 12.5px/1 var(--font-sans)',
+                    opacity: 0.45,
+                    cursor: 'default',
+                  }}
+                >
+                  Talk to an agent
+                </button>
+                <button
+                  onClick={onKeepChatting}
+                  className="anc-border-hover"
+                  style={{
+                    height: 31,
+                    padding: '0 12px',
+                    borderRadius: 7,
+                    background: 'var(--surface)',
+                    color: 'var(--fg)',
+                    border: '1px solid var(--border)',
+                    font: '500 12.5px/1 var(--font-sans)',
+                  }}
+                >
+                  Keep chatting
+                </button>
+              </div>
+              {result.minDistance !== null && config && (
+                <div
+                  style={{
+                    marginTop: 13,
+                    paddingTop: 11,
+                    borderTop: '1px solid var(--border)',
+                    fontSize: 12,
+                    color: 'var(--muted)',
+                  }}
+                >
+                  Refused because the closest chunk&apos;s distance ({result.minDistance.toFixed(2)}) was at or above
+                  the {config.confidenceThreshold.toFixed(2)} threshold, so the model was never called.
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
-    </div>
+    </>
   );
 }

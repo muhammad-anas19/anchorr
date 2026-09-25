@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useWorkspace } from '../../shared/workspace/WorkspaceContext';
-import { ApiError } from '../../shared/api/client';
-import { ErrorBanner } from '../../shared/ui/ErrorBanner';
+import { notifyError, notifySuccess } from '../../shared/ui/toast';
 import { listMembers, Role, TeamMember, updateMemberRole } from './api';
 import { RoleBadge } from './RoleBadge';
 
@@ -17,23 +16,30 @@ export function MembersPage() {
   const { workspaceId, role: myRole } = useWorkspace();
   const canManage = myRole === 'owner';
   const [members, setMembers] = useState<TeamMember[]>([]);
-  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     listMembers(workspaceId)
       .then(setMembers)
-      .catch((err) => setError(err instanceof ApiError ? err.message : 'Could not load the team.'))
+      .catch((err) => notifyError(err, 'Could not load the team.'))
       .finally(() => setLoading(false));
   }, [workspaceId]);
 
   async function handleRoleChange(userId: number, role: Role) {
-    setError(null);
+    const member = members.find((m) => m.userId === userId);
+    const previous = member?.role;
+    // Optimistic: the select has already moved visually, so the list is updated to match and
+    // rolled back if the request fails — otherwise the control would show the new role while
+    // the server still holds the old one.
+    setMembers((prev) => prev.map((m) => (m.userId === userId ? { ...m, role } : m)));
     try {
       await updateMemberRole(workspaceId, userId, role);
-      setMembers((prev) => prev.map((m) => (m.userId === userId ? { ...m, role } : m)));
+      notifySuccess(`${member?.email ?? 'Member'} is now ${role}.`);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not change this member\'s role.');
+      if (previous) {
+        setMembers((prev) => prev.map((m) => (m.userId === userId ? { ...m, role: previous } : m)));
+      }
+      notifyError(err, "Could not change this member's role.");
     }
   }
 
@@ -44,7 +50,6 @@ export function MembersPage() {
         Who has access to this workspace, and what they can do.
       </p>
 
-      <ErrorBanner message={error} />
 
       {loading ? (
         <p style={{ color: '#9a9aa2', fontSize: 13 }}>Loading…</p>

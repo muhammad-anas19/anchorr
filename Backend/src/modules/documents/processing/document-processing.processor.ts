@@ -113,7 +113,22 @@ export class DocumentProcessingProcessor extends WorkerHost {
     // redelivers this job to a second worker while the first is still genuinely running —
     // the second call's add() with the same jobId is a safe no-op instead of creating a
     // real duplicate embedding job.
-    await this.embeddingQueue.add('embed', { documentId }, { jobId: `embed-${documentId}` });
+    //
+    // The key includes THIS processing job's own id, not just the document id, and that
+    // distinction is load-bearing. BullMQ enforces jobId uniqueness against every job it
+    // still holds, finished ones included, so a bare `embed-${documentId}` is enqueueable
+    // exactly once per document for all time: a genuine reprocess (a re-upload, a retry, the
+    // planned "Reindex all") is then silently swallowed — no job, no error, no log. Keying on
+    // the processing job id keeps the property we actually want (a stall redelivery reuses
+    // the same job id, so it still dedupes) while letting a genuinely new processing run
+    // enqueue its own embedding job. removeOnComplete/removeOnFail stop these keys
+    // accumulating in Redis; nothing is lost by dropping that history, because a failure's
+    // durable record is Document.status/failureReason in Postgres, written below.
+    await this.embeddingQueue.add(
+      'embed',
+      { documentId },
+      { jobId: `embed-${documentId}-${job.id}`, removeOnComplete: true, removeOnFail: true },
+    );
   }
 
   @OnWorkerEvent('failed')

@@ -1,59 +1,23 @@
-import { TextField } from '../../shared/ui/TextField';
-
+// The filter controls themselves now live in the shared DataTable's own toolbar — only the
+// filter types and the predicate they describe are still owned by this feature.
 export type StatusFilter = 'all' | 'ready' | 'processing' | 'failed';
 export type TypeFilter = 'all' | 'pdf' | 'docx';
 
-export function DocumentsFilterBar({
-  search,
-  onSearchChange,
-  status,
-  onStatusChange,
-  type,
-  onTypeChange,
-  totalCount,
-}: {
-  search: string;
-  onSearchChange: (value: string) => void;
-  status: StatusFilter;
-  onStatusChange: (value: StatusFilter) => void;
-  type: TypeFilter;
-  onTypeChange: (value: TypeFilter) => void;
-  totalCount: number;
-}) {
-  const selectStyle: React.CSSProperties = {
-    height: 30,
-    padding: '0 8px',
-    border: '1px solid #e7e7e4',
-    borderRadius: 7,
-    background: 'white',
-    color: '#6b6b73',
-    fontSize: 12.5,
-    fontWeight: 500,
-  };
-
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 16px', borderBottom: '1px solid #e7e7e4', flexWrap: 'wrap' }}>
-      <TextField
-        placeholder="Search documents"
-        value={search}
-        onChange={(e) => onSearchChange(e.target.value)}
-        style={{ height: 30, minWidth: 200, fontSize: 12.5 }}
-      />
-      <select value={status} onChange={(e) => onStatusChange(e.target.value as StatusFilter)} style={selectStyle}>
-        <option value="all">Status: All</option>
-        <option value="ready">Status: Ready</option>
-        <option value="processing">Status: Processing</option>
-        <option value="failed">Status: Failed</option>
-      </select>
-      <select value={type} onChange={(e) => onTypeChange(e.target.value as TypeFilter)} style={selectStyle}>
-        <option value="all">Type: All</option>
-        <option value="pdf">Type: PDF</option>
-        <option value="docx">Type: DOCX</option>
-      </select>
-      <div style={{ flex: 1 }} />
-      <div style={{ fontSize: 12, color: '#9a9aa2', fontFamily: 'monospace' }}>
-        {totalCount} document{totalCount === 1 ? '' : 's'}
-      </div>
-    </div>
-  );
+// Client-side, unlike the agent console's queue, and deliberately so: this endpoint returns
+// every document in the workspace in one response with no pagination, so filtering in the
+// browser matches what the Backend actually offers. If the document list ever grows past a
+// single page, this moves server-side the way the handoff queue already has.
+export function matchesFilters(
+  doc: { originalFilename: string; status: string; mimeType: string },
+  search: string,
+  status: StatusFilter,
+  type: TypeFilter,
+): boolean {
+  if (search && !doc.originalFilename.toLowerCase().includes(search.toLowerCase())) return false;
+  if (status === 'ready' && doc.status !== 'ready') return false;
+  if (status === 'processing' && doc.status !== 'uploaded' && doc.status !== 'processing') return false;
+  if (status === 'failed' && doc.status !== 'failed') return false;
+  if (type === 'pdf' && doc.mimeType !== 'application/pdf') return false;
+  if (type === 'docx' && doc.mimeType === 'application/pdf') return false;
+  return true;
 }

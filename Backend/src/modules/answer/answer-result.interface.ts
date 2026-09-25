@@ -1,5 +1,16 @@
 import { ConversationStatus } from '../../database/entities/conversation-status.enum';
 
+// The retrieval settings actually in force for this workspace. "Vector" is not a placeholder
+// for "Hybrid": hybrid search (Phase 13) genuinely does not exist yet, and labelling the
+// screen Hybrid would describe a system that hasn't been built.
+export interface AnswerConfig {
+  searchMode: 'Vector';
+  topK: number;
+  model: string;
+  confidenceThreshold: number;
+  searchableChunks: number;
+}
+
 export interface Citation {
   index: number;
   chunkId: number;

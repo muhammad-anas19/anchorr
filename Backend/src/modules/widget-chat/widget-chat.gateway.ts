@@ -22,6 +22,7 @@ import { ConversationSession } from '../../database/entities/conversation-sessio
 import { ConversationSessionStatus } from '../../database/entities/conversation-session-status.enum';
 import { AnswerService } from '../answer/answer.service';
 import { RealtimeBroadcaster } from '../../realtime/realtime-broadcaster.service';
+import { AgentPresenceService } from '../../realtime/agent-presence.service';
 import { conversationRoom, agentsRoom } from '../../realtime/rooms';
 import { WidgetMessageDto } from './dto/widget-message.dto';
 import { JoinConversationDto } from './dto/join-conversation.dto';
@@ -58,6 +59,7 @@ export class WidgetChatGateway implements OnGatewayConnection, OnGatewayDisconne
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly broadcaster: RealtimeBroadcaster,
+    private readonly presence: AgentPresenceService,
   ) {}
 
   afterInit(server: Server): void {
@@ -141,11 +143,19 @@ export class WidgetChatGateway implements OnGatewayConnection, OnGatewayDisconne
     }
 
     this.connections.set(client.id, { kind: 'agent', workspaceId, userId });
+    // Presence is the live socket, not a login: an agent who closed the tab without logging
+    // out is not available to take a conversation, and one who logged in this morning and
+    // walked away is not either.
+    this.presence.add(workspaceId, userId);
     await client.join(agentsRoom(workspaceId));
     client.emit('ready');
   }
 
   handleDisconnect(client: Socket): void {
+    const connection = this.connections.get(client.id);
+    if (connection?.kind === 'agent') {
+      this.presence.remove(connection.workspaceId, connection.userId);
+    }
     this.connections.delete(client.id);
   }
 

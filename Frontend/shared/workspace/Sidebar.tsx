@@ -2,55 +2,305 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { Icon, type IconName } from '../ui/Icon';
+import { Avatar } from '../ui/primitives';
+import { useTheme } from '../theme/ThemeProvider';
 
 interface NavItem {
-  href?: string;
+  icon: IconName;
   label: string;
-  badge?: string;
+  href?: string;
+  badge?: number;
 }
 
-// Every section from the actual prototype design is listed here, even the ones with no
-// backend behind them yet — shown, not hidden, but disabled and unlinked rather than faked
-// with mock data. Only entries with a real `href` (a real backend + page) are clickable.
-const MAIN_ITEMS: NavItem[] = [
-  { label: 'Overview' },
-  { label: 'Conversations' },
-  { href: '/documents', label: 'Knowledge' },
-  { href: '/playground', label: 'AI Playground' },
-  { href: '/console', label: 'Agent console' },
+// Every section the prototype's nav has, in its order, with its icon. Entries with no `href`
+// have no backend behind them yet: shown (so the product's shape is honest) but visibly
+// disabled rather than wired to a page that would have to invent its data.
+const SECTIONS: { title?: string; items: NavItem[] }[] = [
+  {
+    items: [
+      { icon: 'overview', label: 'Overview' },
+      { icon: 'conversations', label: 'Conversations' },
+      { icon: 'knowledge', label: 'Knowledge', href: '/documents' },
+      { icon: 'playground', label: 'AI Playground', href: '/playground' },
+      { icon: 'agents', label: 'Agent console', href: '/console' },
+    ],
+  },
+  {
+    title: 'Measure',
+    items: [
+      { icon: 'analytics', label: 'Analytics' },
+      { icon: 'evaluations', label: 'Evaluations' },
+      { icon: 'usage', label: 'Usage & cost' },
+    ],
+  },
+  {
+    title: 'Deploy',
+    items: [
+      { icon: 'widget', label: 'Widget', href: '/widget' },
+      { icon: 'billing', label: 'Billing' },
+      { icon: 'settings', label: 'Team', href: '/team' },
+      { icon: 'onboarding', label: 'Onboarding' },
+    ],
+  },
 ];
 
-const MEASURE_ITEMS: NavItem[] = [{ label: 'Analytics' }, { label: 'Evaluations' }, { label: 'Usage & cost' }];
-
-const DEPLOY_ITEMS: NavItem[] = [
-  { href: '/widget', label: 'Widget' },
-  { label: 'Billing' },
-  { href: '/team', label: 'Team' },
-  { label: 'Onboarding' },
-];
-
-function NavLink({ item }: { item: NavItem }) {
+export function Sidebar({
+  workspaceName,
+  userEmail,
+  role,
+  expanded,
+  onToggle,
+  onLogout,
+  waitingCount,
+}: {
+  workspaceName: string;
+  userEmail: string;
+  role: string;
+  expanded: boolean;
+  onToggle: () => void;
+  onLogout: () => void;
+  waitingCount?: number;
+}) {
   const pathname = usePathname();
-  const active = item.href ? pathname?.startsWith(item.href) : false;
+  const { toggle: toggleTheme } = useTheme();
+
+  return (
+    <aside
+      style={{
+        width: expanded ? 208 : 56,
+        flex: 'none',
+        borderRight: '1px solid var(--border)',
+        background: 'var(--surface)',
+        display: 'flex',
+        flexDirection: 'column',
+        transition: 'width .18s ease',
+        overflow: 'hidden',
+      }}
+    >
+      <div
+        style={{
+          height: 56,
+          flex: 'none',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+          padding: '0 14px',
+          borderBottom: '1px solid var(--border)',
+        }}
+      >
+        <div
+          style={{
+            width: 26,
+            height: 26,
+            flex: 'none',
+            borderRadius: 7,
+            background: 'var(--btn-bg)',
+            color: 'var(--btn-fg)',
+            display: 'grid',
+            placeItems: 'center',
+            font: "700 13px/1 var(--font-sans)",
+          }}
+        >
+          A
+        </div>
+        {expanded && (
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ fontWeight: 600, letterSpacing: '-.01em' }}>Anchor</div>
+            <div
+              style={{
+                fontSize: 11,
+                color: 'var(--faint)',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+            >
+              {workspaceName}
+            </div>
+          </div>
+        )}
+        <button
+          onClick={onToggle}
+          aria-label={expanded ? 'Collapse sidebar' : 'Expand sidebar'}
+          className="anc-icon-btn"
+          style={{
+            width: 26,
+            height: 26,
+            flex: 'none',
+            border: '1px solid var(--border)',
+            background: 'var(--surface)',
+            color: 'var(--muted)',
+            borderRadius: 6,
+            display: 'grid',
+            placeItems: 'center',
+          }}
+        >
+          <Icon name="sidebarToggle" size={13} strokeWidth={1.6} />
+        </button>
+      </div>
+
+      <nav style={{ flex: 1, overflowY: 'auto', padding: '10px 8px', display: 'flex', flexDirection: 'column', gap: 1 }}>
+        {SECTIONS.map((section, sectionIndex) => (
+          <div key={section.title ?? sectionIndex} style={{ display: 'contents' }}>
+            {section.title && expanded && (
+              <div
+                style={{
+                  font: '600 10px/1 var(--font-sans)',
+                  letterSpacing: '.09em',
+                  textTransform: 'uppercase',
+                  color: 'var(--faint)',
+                  padding: '16px 8px 6px',
+                }}
+              >
+                {section.title}
+              </div>
+            )}
+            {section.items.map((item) => (
+              <NavRow
+                key={item.label}
+                item={item}
+                expanded={expanded}
+                active={!!item.href && pathname?.startsWith(item.href)}
+                badge={item.label === 'Agent console' ? waitingCount : undefined}
+              />
+            ))}
+          </div>
+        ))}
+      </nav>
+
+      <div style={{ flex: 'none', borderTop: '1px solid var(--border)', padding: 8 }}>
+        {expanded && (
+          <div
+            style={{
+              width: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 9,
+              padding: '7px 8px',
+              borderRadius: 7,
+            }}
+          >
+            <Avatar label={userEmail} size={24} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div
+                style={{
+                  font: '500 12.5px/1.2 var(--font-sans)',
+                  color: 'var(--fg)',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {userEmail}
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--faint)', textTransform: 'capitalize' }}>{role}</div>
+            </div>
+            <button
+              onClick={onLogout}
+              aria-label="Sign out"
+              className="anc-icon-btn"
+              style={{ border: 0, background: 'transparent', color: 'var(--faint)', display: 'grid', placeItems: 'center' }}
+            >
+              <Icon name="logout" size={14} strokeWidth={1.6} />
+            </button>
+          </div>
+        )}
+        <div style={{ display: 'flex', gap: 4, paddingTop: 6, justifyContent: expanded ? 'flex-start' : 'center' }}>
+          <button
+            onClick={toggleTheme}
+            aria-label="Toggle theme"
+            className="anc-icon-btn"
+            style={{
+              width: 28,
+              height: 28,
+              border: '1px solid var(--border)',
+              background: 'var(--surface)',
+              borderRadius: 7,
+              display: 'grid',
+              placeItems: 'center',
+              color: 'var(--muted)',
+            }}
+          >
+            <Icon name="moon" size={14} />
+          </button>
+          {!expanded && (
+            <button
+              onClick={onLogout}
+              aria-label="Sign out"
+              className="anc-icon-btn"
+              style={{
+                width: 28,
+                height: 28,
+                border: '1px solid var(--border)',
+                background: 'var(--surface)',
+                borderRadius: 7,
+                display: 'grid',
+                placeItems: 'center',
+                color: 'var(--muted)',
+              }}
+            >
+              <Icon name="logout" size={14} strokeWidth={1.6} />
+            </button>
+          )}
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+function NavRow({
+  item,
+  expanded,
+  active,
+  badge,
+}: {
+  item: NavItem;
+  expanded: boolean;
+  active: boolean;
+  badge?: number;
+}) {
+  const content = (
+    <>
+      <Icon name={item.icon} size={15} />
+      {expanded && <span style={{ whiteSpace: 'nowrap', flex: 1 }}>{item.label}</span>}
+      {expanded && badge !== undefined && badge > 0 && (
+        <span
+          style={{
+            font: '600 11px/1 var(--font-mono)',
+            color: 'var(--err)',
+            background: 'var(--err-soft)',
+            padding: '3px 5px',
+            borderRadius: 5,
+          }}
+        >
+          {badge}
+        </span>
+      )}
+      {expanded && !item.href && <span style={{ font: '500 10px/1 var(--font-sans)', color: 'var(--faint)' }}>Soon</span>}
+    </>
+  );
+
+  const base = {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    height: 32,
+    padding: '0 8px',
+    border: 0,
+    borderRadius: 7,
+    font: '500 13px/1 var(--font-sans)',
+    textAlign: 'left' as const,
+    width: '100%',
+  };
 
   if (!item.href) {
     return (
       <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '8px 8px',
-          borderRadius: 6,
-          fontSize: 13,
-          fontWeight: 500,
-          color: '#c4c4c9',
-          cursor: 'default',
-        }}
-        title="Not built yet"
+        title={`${item.label} — not built yet`}
+        style={{ ...base, background: 'transparent', color: 'var(--faint)', cursor: 'default' }}
       >
-        <span>{item.label}</span>
-        <span style={{ fontSize: 10, fontWeight: 600 }}>Soon</span>
+        {content}
       </div>
     );
   }
@@ -58,122 +308,16 @@ function NavLink({ item }: { item: NavItem }) {
   return (
     <Link
       href={item.href}
+      title={expanded ? undefined : item.label}
+      className={active ? undefined : 'anc-nav-item'}
       style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        padding: '8px 8px',
-        borderRadius: 6,
-        fontSize: 13,
-        fontWeight: 500,
+        ...base,
+        background: active ? 'var(--accent-soft)' : 'transparent',
+        color: active ? 'var(--accent-fg)' : 'var(--fg)',
         textDecoration: 'none',
-        color: active ? '#111827' : '#6b6b73',
-        background: active ? '#eef1fe' : 'transparent',
-        marginBottom: 2,
       }}
     >
-      <span>{item.label}</span>
-      {item.badge && (
-        <span
-          style={{
-            fontSize: 11,
-            fontWeight: 600,
-            color: '#2542b8',
-            background: '#eef1fe',
-            borderRadius: 10,
-            padding: '1px 6px',
-          }}
-        >
-          {item.badge}
-        </span>
-      )}
+      {content}
     </Link>
-  );
-}
-
-function SectionLabel({ children }: { children: string }) {
-  return (
-    <div style={{ fontSize: 10.5, fontWeight: 600, letterSpacing: 0.6, textTransform: 'uppercase', color: '#c4c4c9', padding: '14px 8px 6px' }}>
-      {children}
-    </div>
-  );
-}
-
-export function Sidebar({
-  workspaceName,
-  userEmail,
-  role,
-  onLogout,
-}: {
-  workspaceName: string;
-  userEmail: string;
-  role: string;
-  onLogout: () => void;
-}) {
-  return (
-    <nav
-      style={{
-        width: 208,
-        flex: 'none',
-        borderRight: '1px solid #e7e7e4',
-        background: '#fafafa',
-        display: 'flex',
-        flexDirection: 'column',
-        padding: '16px 10px',
-      }}
-    >
-      <div style={{ padding: '0 8px 16px' }}>
-        <div style={{ fontSize: 13, fontWeight: 600 }}>Anchor</div>
-        <div style={{ fontSize: 11.5, color: '#9a9aa2', marginTop: 2 }}>{workspaceName}</div>
-      </div>
-
-      {MAIN_ITEMS.map((item) => (
-        <NavLink key={item.label} item={item} />
-      ))}
-
-      <SectionLabel>Measure</SectionLabel>
-      {MEASURE_ITEMS.map((item) => (
-        <NavLink key={item.label} item={item} />
-      ))}
-
-      <SectionLabel>Deploy</SectionLabel>
-      {DEPLOY_ITEMS.map((item) => (
-        <NavLink key={item.label} item={item} />
-      ))}
-
-      <div style={{ flex: 1 }} />
-
-      <div style={{ borderTop: '1px solid #e7e7e4', paddingTop: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
-        <div
-          style={{
-            width: 28,
-            height: 28,
-            borderRadius: '50%',
-            background: '#eef1fe',
-            color: '#2542b8',
-            display: 'grid',
-            placeItems: 'center',
-            fontSize: 11,
-            fontWeight: 600,
-            flex: 'none',
-          }}
-        >
-          {userEmail.slice(0, 2).toUpperCase()}
-        </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 12.5, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {userEmail}
-          </div>
-          <div style={{ fontSize: 11, color: '#9a9aa2', textTransform: 'capitalize' }}>{role}</div>
-        </div>
-        <button
-          onClick={onLogout}
-          title="Sign out"
-          style={{ border: 'none', background: 'transparent', color: '#9a9aa2', cursor: 'pointer', fontSize: 12 }}
-        >
-          ↩
-        </button>
-      </div>
-    </nav>
   );
 }

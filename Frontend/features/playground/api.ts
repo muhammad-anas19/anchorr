@@ -26,6 +26,20 @@ export interface AnswerResult {
   retrievedChunks: RetrievedChunkSummary[];
 }
 
+// The retrieval settings actually in force, read from the Backend rather than restated here
+// — if the threshold or the model changes server-side, this screen follows automatically.
+export interface AnswerConfig {
+  searchMode: 'Vector';
+  topK: number;
+  model: string;
+  confidenceThreshold: number;
+  searchableChunks: number;
+}
+
+export function getAnswerConfig(workspaceId: number, signal?: AbortSignal): Promise<AnswerConfig> {
+  return request(`/workspaces/${workspaceId}/ask/config`, { signal });
+}
+
 export function ask(workspaceId: number, question: string, sessionId: string): Promise<AnswerResult> {
   return request(`/workspaces/${workspaceId}/ask`, {
     method: 'POST',

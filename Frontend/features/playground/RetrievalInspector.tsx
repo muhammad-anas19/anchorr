@@ -1,75 +1,131 @@
-import type { AnswerResult } from './api';
+'use client';
 
-// Real, current facts about this deployment — not user-configurable yet, so shown as static
-// values rather than fetched from anywhere. "Vector", not "Hybrid": this project's retrieval
-// (Phase 8) is pure vector search — hybrid (keyword + vector) is Phase 13, not built yet.
-const SEARCH_MODE = 'Vector';
-const TOP_K = 5;
-const MODEL_NAME = 'gemini-3.6-flash';
+import { SectionLabel } from '../../shared/ui/primitives';
+import type { AnswerConfig, AnswerResult } from './api';
+
+// Cosine distance is "how far apart", so a relevance percentage is its complement. The same
+// transform the answer bubble uses, kept in one place.
+export function relevancePercent(distance: number): number {
+  return Math.round(Math.max(0, Math.min(1, 1 - distance)) * 100);
+}
+
+export function chunkCountLabel(count: number): string {
+  return `${count.toLocaleString()} chunk${count === 1 ? '' : 's'}`;
+}
 
 function Tile({ label, value }: { label: string; value: string | number }) {
   return (
-    <div style={{ border: '1px solid #e7e7e4', borderRadius: 8, padding: 10 }}>
-      <div style={{ fontSize: 11.5, color: '#6b6b73' }}>{label}</div>
-      <div style={{ fontSize: 12.5, fontWeight: 500, marginTop: 6, fontFamily: 'monospace' }}>{value}</div>
+    <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 10 }}>
+      <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>{label}</div>
+      <div style={{ font: '500 12px/1.3 var(--font-mono)', marginTop: 6, wordBreak: 'break-word' }}>{value}</div>
     </div>
   );
 }
 
-function scorePercent(distance: number): number {
-  return Math.round(Math.max(0, Math.min(1, 1 - distance)) * 100);
-}
-
-export function RetrievalInspector({ result }: { result: AnswerResult | null }) {
+export function RetrievalInspector({ result, config }: { result: AnswerResult | null; config: AnswerConfig | null }) {
   return (
-    <aside style={{ width: 300, flex: 'none', overflowY: 'auto', background: 'white', borderLeft: '1px solid #e7e7e4', padding: 20 }}>
-      <div style={{ fontSize: 14, fontWeight: 600 }}>Retrieval inspector</div>
-      <p style={{ margin: '6px 0 16px', fontSize: 12.5, color: '#6b6b73' }}>What the model was given for the last answer.</p>
+    <aside
+      style={{
+        width: 300,
+        flex: 'none',
+        overflowY: 'auto',
+        background: 'var(--surface)',
+        borderLeft: '1px solid var(--border)',
+        padding: '20px 20px 28px',
+      }}
+    >
+      <div style={{ font: '600 14px/1 var(--font-sans)' }}>Retrieval inspector</div>
+      <p style={{ margin: '6px 0 16px', fontSize: 12.5, color: 'var(--muted)' }}>
+        What the model was given for the last answer.
+      </p>
 
+      {/* The prototype's fourth tile is a cache hit/miss. There is no cache in this system
+          yet, so that slot shows the confidence threshold instead — a real number this screen
+          genuinely depends on, rather than a plausible-looking "Miss". */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 18 }}>
-        <Tile label="Search mode" value={SEARCH_MODE} />
-        <Tile label="Top k" value={TOP_K} />
-        <Tile label="Retrieved" value={result ? result.retrievedChunks.length : '—'} />
-        <Tile label="Model" value={MODEL_NAME} />
+        <Tile label="Search mode" value={config?.searchMode ?? '—'} />
+        <Tile label="Top k" value={config?.topK ?? '—'} />
+        <Tile label="Threshold" value={config ? config.confidenceThreshold.toFixed(2) : '—'} />
+        <Tile label="Model" value={config?.model ?? '—'} />
       </div>
 
-      {!result && <p style={{ fontSize: 12.5, color: '#9a9aa2' }}>Ask a question to see what gets retrieved.</p>}
+      {!result && (
+        <p style={{ fontSize: 12.5, color: 'var(--faint)' }}>Ask a question to see what gets retrieved.</p>
+      )}
 
       {result && (
         <>
-          <div style={{ fontSize: 10.5, fontWeight: 600, letterSpacing: 0.5, textTransform: 'uppercase', color: '#9a9aa2', marginBottom: 10 }}>
-            Retrieved chunks
-          </div>
+          <SectionLabel>Retrieved chunks</SectionLabel>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {result.retrievedChunks.length === 0 && (
-              <p style={{ fontSize: 12.5, color: '#9a9aa2' }}>Nothing was retrieved for this question.</p>
+              <p style={{ fontSize: 12.5, color: 'var(--faint)' }}>Nothing was retrieved for this question.</p>
             )}
-            {result.retrievedChunks.map((chunk, i) => {
-              const isTop = i === 0;
+            {result.retrievedChunks.map((chunk, index) => {
+              const isTop = index === 0;
+              // A chunk further away than the threshold is a weak match. It is still sent to
+              // the model as context whenever the CLOSEST chunk cleared the bar — saying
+              // otherwise would misdescribe what the prompt actually contained.
+              const weak = config ? chunk.distance >= config.confidenceThreshold : false;
               return (
                 <div
                   key={chunk.chunkId}
                   style={{
-                    border: `1px solid ${isTop ? '#3459e6' : '#e7e7e4'}`,
-                    background: isTop ? '#eef1fe' : 'white',
+                    border: `1px solid ${isTop ? 'var(--accent)' : 'var(--border)'}`,
+                    background: isTop ? 'var(--accent-soft)' : 'var(--surface)',
                     borderRadius: 9,
                     padding: '11px 12px',
+                    opacity: weak && !isTop ? 0.62 : 1,
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: 11, fontFamily: 'monospace', color: isTop ? '#2542b8' : '#9a9aa2' }}>#{chunk.chunkId}</span>
-                    <span style={{ flex: 1, fontSize: 12.5, fontWeight: 500 }}>{chunk.originalFilename}</span>
-                    <span style={{ fontSize: 11, fontFamily: 'monospace', color: '#136c46' }}>{scorePercent(chunk.distance)}%</span>
+                    <span style={{ font: '500 11px/1 var(--font-mono)', color: isTop ? 'var(--accent-fg)' : 'var(--faint)' }}>
+                      #{chunk.chunkId}
+                    </span>
+                    <span style={{ flex: 1, font: '500 12.5px/1.3 var(--font-sans)', minWidth: 0, wordBreak: 'break-word' }}>
+                      {chunk.originalFilename}
+                    </span>
+                    <span
+                      style={{
+                        font: '500 11px/1 var(--font-mono)',
+                        color: weak ? 'var(--muted)' : 'var(--ok)',
+                      }}
+                    >
+                      {relevancePercent(chunk.distance)}%
+                    </span>
                   </div>
-                  <div style={{ fontSize: 11.5, color: '#6b6b73', marginTop: 7, lineHeight: 1.45 }}>&quot;{chunk.snippet}&quot;</div>
+                  <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 7, lineHeight: 1.45 }}>
+                    &quot;{chunk.snippet}&quot;
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                    <span style={{ font: '400 10.5px/1 var(--font-mono)', color: 'var(--faint)' }}>
+                      distance {chunk.distance.toFixed(3)}
+                    </span>
+                    {weak && (
+                      <span style={{ font: '400 10.5px/1 var(--font-mono)', color: 'var(--faint)' }}>· weak match</span>
+                    )}
+                  </div>
                 </div>
               );
             })}
           </div>
 
-          <div style={{ marginTop: 18, padding: 12, border: '1px solid #e7e7e4', borderRadius: 9, background: '#fafafa', fontSize: 12, color: '#6b6b73', lineHeight: 1.55 }}>
-            Prompt assembled from {result.retrievedChunks.length} chunk{result.retrievedChunks.length === 1 ? '' : 's'}
-            {result.promptTokens !== null && ` · ${result.promptTokens.toLocaleString()} context tokens`}
+          <div
+            style={{
+              marginTop: 18,
+              padding: 12,
+              border: '1px solid var(--border)',
+              borderRadius: 9,
+              background: 'var(--surface-2)',
+              fontSize: 12,
+              color: 'var(--muted)',
+              lineHeight: 1.55,
+            }}
+          >
+            {result.promptTokens === null
+              ? 'No prompt was sent — the closest match was outside the confidence threshold, so the model was never called.'
+              : `Prompt assembled from ${result.retrievedChunks.length} chunk${
+                  result.retrievedChunks.length === 1 ? '' : 's'
+                } · ${result.promptTokens.toLocaleString()} context tokens.`}
           </div>
         </>
       )}
