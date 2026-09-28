@@ -19,12 +19,8 @@ const ESCALATION_ANSWER =
   "I'm having trouble generating an answer right now — let me connect you with a member of our team who can help.";
 const CITATION_PATTERN = /\[(\d+)\]/g;
 
-// A real starting point, not a guessed one: measured directly against this project's own
-// embedding model — a genuinely related question scored ~0.22 distance (and a differently
-// -phrased related question in Phase 8's own test scored ~0.38), while a genuinely unrelated
-// question scored ~0.56. 0.45 sits between the observed related and unrelated ranges. Tunable
-// once Phase 17 (Evaluations) gives real outcome data — not asserted as permanently correct.
 export const CONFIDENT_DISTANCE_THRESHOLD = 0.45;
+
 
 @Injectable()
 export class AnswerService {
@@ -35,12 +31,9 @@ export class AnswerService {
     private readonly handoffService: HandoffService,
   ) {}
 
-  // What the playground's retrieval inspector reports, sourced from the real constants this
-  // service and RetrievalService actually run on rather than duplicated in the UI — if the
-  // threshold moves, the number on screen moves with it.
   async getConfig(workspaceId: number): Promise<AnswerConfig> {
     return {
-      searchMode: 'Vector',
+      searchMode: 'Hybrid',
       topK: DEFAULT_K,
       model: GENERATION_MODEL,
       confidenceThreshold: CONFIDENT_DISTANCE_THRESHOLD,
@@ -49,13 +42,10 @@ export class AnswerService {
   }
 
   async answer(workspaceId: number, question: string, sessionId: string | null = null): Promise<AnswerResult> {
-    const chunks = await this.retrievalService.retrieveRelevantChunks(workspaceId, question);
+    const { chunks } = await this.retrievalService.retrieveRelevantChunks(workspaceId, question);
 
-    // chunks are already ordered closest-first (Phase 8) — chunks[0] IS the minimum distance,
-    // no separate aggregation needed. Using the closest match only (not an average across all
-    // k results), per this phase's design: averaging in mediocre also-rans that LIMIT k
-    // returns regardless of quality would dilute a genuinely strong single match.
-    const minDistance = chunks.length > 0 ? chunks[0].distance : null;
+    const distances = chunks.map((chunk) => chunk.distance).filter((d) => Number.isFinite(d));
+    const minDistance = distances.length > 0 ? Math.min(...distances) : null;
 
     const retrievedChunks = chunks.map((chunk) => ({
       chunkId: chunk.chunkId,
@@ -63,12 +53,9 @@ export class AnswerService {
       originalFilename: chunk.originalFilename,
       distance: chunk.distance,
       snippet: chunk.content.slice(0, 160),
+      vectorRank: chunk.vectorRank,
+      keywordRank: chunk.keywordRank,
     }));
-
-    // Short-circuit: never call the generation LLM with nothing to ground it, or with only
-    // weak, unlikely-to-be-relevant matches — see Phase 9's Q6 and Phase 10's own diagnostic.
-    // A weak match is treated exactly like no match at all: refused, not answered. History is
-    // irrelevant here — there's nothing to generate, so there's no prompt to add it to.
     if (minDistance === null || minDistance >= CONFIDENT_DISTANCE_THRESHOLD) {
       return this.persistAndReturn(workspaceId, question, {
         answer: NO_INFORMATION_ANSWER,
@@ -80,12 +67,6 @@ export class AnswerService {
         retrievedChunks,
       }, sessionId);
     }
-
-    // Only fetched once we know we're actually calling the LLM — a refused/escalated turn
-    // never needed the history in the first place. Only rows in *this* workspace with the
-    // *same* sessionId — mixing another workspace's turns in here would be the same kind of
-    // tenant leak WorkspaceGuard has guarded against since Phase 2, just via a query instead
-    // of a socket room (Q6/Q10 of this phase's diagnostic).
     const history = sessionId ? await this.fetchRecentHistory(workspaceId, sessionId) : [];
 
     const systemPrompt = buildSystemPrompt(chunks, history);
@@ -93,10 +74,6 @@ export class AnswerService {
     try {
       generated = await this.generationProvider.generate(systemPrompt, question);
     } catch {
-      // A genuine generation failure (Phase 9's real 500 case) is a concrete, real reason to
-      // flag this for a human — "the AI tried and couldn't complete the answer" — unlike a
-      // guessed confidence middle-zone with no real data behind it. No retry: the customer is
-      // waiting live (Phase 9's Q10 reasoning).
       return this.persistAndReturn(workspaceId, question, {
         answer: ESCALATION_ANSWER,
         citations: [],
@@ -120,10 +97,6 @@ export class AnswerService {
     }, sessionId);
   }
 
-  // Last 5 turns of the same session, oldest first — the order a transcript would read in,
-  // not DB-insertion order (which is why we fetch DESC then reverse rather than fetching ASC
-  // with an offset: taking the most recent 5 requires ordering by newest first at the query
-  // level, but the prompt should read chronologically).
   private async fetchRecentHistory(workspaceId: number, sessionId: string): Promise<Conversation[]> {
     const rows = await this.conversations.find({
       where: { workspaceId, sessionId },

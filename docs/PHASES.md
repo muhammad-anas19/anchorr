@@ -18,7 +18,7 @@
 | 10 | Confidence scoring, refusal & escalation state machine | DONE | 9 | retrieval-based confidence threshold, Conversation state machine |
 | 11 | Public widget + real-time chat | DONE — see `docs/phases/11-public-widget-realtime-chat.md` | 2, 10 | WebSockets (Socket.IO), public API key + domain allowlist, separate widget build target. **Also where the Phase 1 auto-increment-PK decision was revisited for externally-exposed IDs** (a targeted `publicKey` token, not a project-wide PK migration). |
 | 12 | Agent console: human handoff | DONE (closing quiz not yet posed) — see `docs/phases/12-agent-console-human-handoff.md` | 11 | presence tracking, optimistic concurrency on "claim". **First phase to build `Frontend/`** — a minimal Next.js agent console. |
-| 13 | Hybrid search (vector + keyword) | PENDING | 8 | Postgres full-text search, rank fusion |
+| 13 | Hybrid search (vector + keyword) | DONE (closing quiz 0/5/8, Topics to master written) — see `docs/phases/13-hybrid-search.md` | 8 | Postgres full-text search (`tsvector`, GIN, stemming), Reciprocal Rank Fusion. **Notable: measurement showed this model already handles rare exact tokens, so a planned lexical-confidence path was deleted before shipping, and `ts_rank`'s lack of IDF meant no end-to-end win could be demonstrated — Phase 17 should settle it.** Also produced a full FTS reference section and caught a 5-hour timezone bug unrelated to the phase. |
 | 14 | Semantic caching | PENDING | 9, 7 | similarity-keyed Redis caching, cache invalidation |
 | 15 | Usage metering & rate limiting | PENDING | 9 | metering as an event stream, Redis rate limiting |
 | 16 | Stripe billing integration | PENDING | 15 | Stripe subscriptions vs usage records, webhook handling |

@@ -1,10 +1,11 @@
 import { ConversationStatus } from '../../database/entities/conversation-status.enum';
 
-// The retrieval settings actually in force for this workspace. "Vector" is not a placeholder
-// for "Hybrid": hybrid search (Phase 13) genuinely does not exist yet, and labelling the
-// screen Hybrid would describe a system that hasn't been built.
+// The retrieval settings actually in force for this workspace. Became 'Hybrid' in Phase 13,
+// when a real keyword ranking started running alongside the vector one — before that it said
+// 'Vector' precisely because describing the screen as Hybrid would have named a system that
+// did not exist.
 export interface AnswerConfig {
-  searchMode: 'Vector';
+  searchMode: 'Hybrid';
   topK: number;
   model: string;
   confidenceThreshold: number;
@@ -30,6 +31,11 @@ export interface RetrievedChunkSummary {
   originalFilename: string;
   distance: number;
   snippet: string;
+  // Which search found this chunk, and where it placed. Null means that search did not
+  // return it at all — informative in itself: keyword-only means an exact-token hit the
+  // vector side missed, vector-only means a paraphrase with no shared words.
+  vectorRank: number | null;
+  keywordRank: number | null;
 }
 
 export interface AnswerResult {

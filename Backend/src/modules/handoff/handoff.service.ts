@@ -332,22 +332,38 @@ export class HandoffService {
   // downgrades a session that's already claimed or resolved back to escalated — a session
   // an agent already owns (or already closed out) shouldn't silently reappear in the queue
   // just because one more turn on it happened to fail.
+  // escalated_at is set by Postgres' own now(), NOT by a JS `new Date()`, and that is a
+  // correctness requirement rather than a style choice. These columns are `timestamp without
+  // time zone`, and node-postgres serialises a JS Date into the HOST's local wall clock —
+  // so on a UTC+5 machine, `new Date()` stored 04:21 while Postgres' now() stored 23:21 the
+  // previous day. Every wait time here is computed in SQL as `now() - escalated_at`, so a
+  // JS-written value produced a wait of MINUS five hours, which the GREATEST(...,0) in
+  // listQueue then silently flattened to "0m 00s". Every real escalation looked brand new
+  // forever and could never reach High priority. Measured at exactly 18000 seconds of skew.
   async recordEscalation(workspaceId: number, sessionId: string): Promise<void> {
     const existing = await this.sessions.findOne({ where: { workspaceId, sessionId } });
     if (!existing) {
-      await this.sessions.save({
-        workspaceId,
-        sessionId,
-        status: ConversationSessionStatus.ESCALATED,
-        escalatedAt: new Date(),
-      });
+      await this.sessions
+        .createQueryBuilder()
+        .insert()
+        .into(ConversationSession)
+        .values({
+          workspaceId,
+          sessionId,
+          status: ConversationSessionStatus.ESCALATED,
+          escalatedAt: () => 'now()',
+        })
+        .execute();
       this.broadcaster.broadcast(agentsRoom(workspaceId), 'session-escalated', { sessionId });
       return;
     }
     if (existing.status === ConversationSessionStatus.OPEN) {
-      existing.status = ConversationSessionStatus.ESCALATED;
-      existing.escalatedAt = new Date();
-      await this.sessions.save(existing);
+      await this.sessions
+        .createQueryBuilder()
+        .update(ConversationSession)
+        .set({ status: ConversationSessionStatus.ESCALATED, escalatedAt: () => 'now()' })
+        .where('id = :id', { id: existing.id })
+        .execute();
       this.broadcaster.broadcast(agentsRoom(workspaceId), 'session-escalated', { sessionId });
     }
   }

@@ -96,12 +96,21 @@ export function RetrievalInspector({ result, config }: { result: AnswerResult | 
                   <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 7, lineHeight: 1.45 }}>
                     &quot;{chunk.snippet}&quot;
                   </div>
-                  <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                  {/* Which search actually found this chunk. A chunk with only one rank is
+                      the interesting case: keyword-only means an exact token the vector side
+                      missed, vector-only means a paraphrase sharing no words. */}
+                  <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
                     <span style={{ font: '400 10.5px/1 var(--font-mono)', color: 'var(--faint)' }}>
-                      distance {chunk.distance.toFixed(3)}
+                      {chunk.vectorRank !== null ? `vector #${chunk.vectorRank}` : 'vector —'}
+                    </span>
+                    <span style={{ font: '400 10.5px/1 var(--font-mono)', color: 'var(--faint)' }}>
+                      {chunk.keywordRank !== null ? `keyword #${chunk.keywordRank}` : 'keyword —'}
+                    </span>
+                    <span style={{ font: '400 10.5px/1 var(--font-mono)', color: 'var(--faint)' }}>
+                      d {chunk.distance.toFixed(3)}
                     </span>
                     {weak && (
-                      <span style={{ font: '400 10.5px/1 var(--font-mono)', color: 'var(--faint)' }}>· weak match</span>
+                      <span style={{ font: '400 10.5px/1 var(--font-mono)', color: 'var(--faint)' }}>· weak</span>
                     )}
                   </div>
                 </div>

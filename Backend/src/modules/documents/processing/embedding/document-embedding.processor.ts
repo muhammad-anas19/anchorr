@@ -62,7 +62,12 @@ export class DocumentEmbeddingProcessor extends WorkerHost {
     // Only reached once every chunk in the loop above succeeded — a thrown error from
     // embeddingProvider.embed() propagates out of process() and fails the whole job,
     // leaving status at 'processing' so a retry picks up exactly where this attempt left off.
-    await this.documents.update(documentId, { status: DocumentStatus.READY, readyAt: new Date() });
+    // now(), not `new Date()`: these are `timestamp without time zone` columns and the pg
+    // driver writes a JS Date as the HOST's local wall clock, while every other timestamp in
+    // this table (created_at) comes from Postgres in UTC. Mixing the two put readyAt five
+    // hours ahead of createdAt for the same document — visible in the "Last indexed" column
+    // as a time in the future.
+    await this.documents.update(documentId, { status: DocumentStatus.READY, readyAt: () => 'now()' });
   }
 
   @OnWorkerEvent('failed')

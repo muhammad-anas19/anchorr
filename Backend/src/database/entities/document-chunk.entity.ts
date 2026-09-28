@@ -42,6 +42,13 @@ export class DocumentChunk {
   @Column({ type: 'vector', length: 768, nullable: true })
   embedding: number[] | null;
 
+  // Maintained entirely by Postgres (GENERATED ALWAYS ... STORED, see the migration), which
+  // is why it is marked insert: false / update: false — TypeORM must never try to write it,
+  // and Postgres rejects any attempt to. Declared here only so the column is not invisible
+  // to anyone reading the entity, and so `synchronize` comparisons do not treat it as drift.
+  @Column({ name: 'content_tsv', type: 'tsvector', nullable: true, insert: false, update: false, select: false })
+  contentTsv?: string;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 }
