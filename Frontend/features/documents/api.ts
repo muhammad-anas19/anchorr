@@ -1,6 +1,6 @@
 import { request } from '../../shared/api/client';
 import { BACKEND_URL } from '../../shared/config';
-import { getToken } from '../../shared/auth/token';
+import { getValidAccessToken } from '../../shared/auth/session';
 
 export interface Document {
   id: number;
@@ -17,10 +17,6 @@ export interface Document {
   createdAt: string;
 }
 
-// Whatever the live job (if any) last reported via job.updateProgress() — see the phase
-// doc / DocumentEmbeddingProcessor for the exact shape of each stage. Redis-only and
-// non-durable: null just means "no live job right now" (already ready/failed, or between
-// stages), not an error.
 export type DocumentProgress =
   | { stage: 'parsing' }
   | { stage: 'chunking'; pageCount: number | null; wordCount: number }
@@ -41,7 +37,7 @@ export function deleteDocument(workspaceId: number, documentId: number): Promise
 
 // Not routed through shared/api/client's request() — file uploads use FormData, and
 // XMLHttpRequest (not fetch) is what makes real upload-progress events possible below.
-export function uploadDocument(
+export async function uploadDocument(
   workspaceId: number,
   file: File,
   onProgress?: (percent: number) => void,
@@ -49,10 +45,14 @@ export function uploadDocument(
   const formData = new FormData();
   formData.append('file', file);
 
+  // Resolved before the request is built, because this path can't use the 401-retry in
+  // shared/api/client — a retry here would have to re-send the whole file, and the progress
+  // bar the user is watching would jump back to 0%. Refreshing first avoids the situation.
+  const token = await getValidAccessToken();
+
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open('POST', `${BACKEND_URL}/workspaces/${workspaceId}/documents`);
-    const token = getToken();
     if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
 
     xhr.upload.onprogress = (event) => {

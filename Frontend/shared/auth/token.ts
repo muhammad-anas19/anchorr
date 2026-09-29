@@ -1,17 +1,28 @@
-const TOKEN_KEY = 'anchor-console-token';
+const ACCESS_TOKEN_KEY = 'anchor-console-token';
+const REFRESH_TOKEN_KEY = 'anchor-console-refresh-token';
 
-// Access-token only, no refresh-token rotation on this side — a deliberate scope boundary
-// for this minimal console (see the phase doc). A 15-minute token expiring mid-shift means
-// logging back in, not a silent failure.
+export interface SessionTokens {
+  accessToken: string;
+  refreshToken: string;
+}
+
+
 export function getToken(): string | null {
   if (typeof window === 'undefined') return null;
-  return window.localStorage.getItem(TOKEN_KEY);
+  return window.localStorage.getItem(ACCESS_TOKEN_KEY);
 }
 
-export function setToken(token: string): void {
-  window.localStorage.setItem(TOKEN_KEY, token);
+export function getRefreshToken(): string | null {
+  if (typeof window === 'undefined') return null;
+  return window.localStorage.getItem(REFRESH_TOKEN_KEY);
 }
 
-export function clearToken(): void {
-  window.localStorage.removeItem(TOKEN_KEY);
+export function setSession(tokens: SessionTokens): void {
+  window.localStorage.setItem(ACCESS_TOKEN_KEY, tokens.accessToken);
+  window.localStorage.setItem(REFRESH_TOKEN_KEY, tokens.refreshToken);
+}
+
+export function clearSession(): void {
+  window.localStorage.removeItem(ACCESS_TOKEN_KEY);
+  window.localStorage.removeItem(REFRESH_TOKEN_KEY);
 }

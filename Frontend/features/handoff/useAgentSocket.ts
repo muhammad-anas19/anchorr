@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Socket } from 'socket.io-client';
 import { connectAgentSocket } from '../../shared/socket/connectAgentSocket';
-import { getToken } from '../../shared/auth/token';
 import { notifyError } from '../../shared/ui/toast';
 
 export interface LiveMessage {
@@ -11,32 +10,21 @@ export interface LiveMessage {
   text: string;
 }
 
-// Owns the one agent socket connection for a workspace. It no longer holds the queue itself:
-// the queue is server-paginated and filtered now, so patching a local copy on every event
-// would fight the current page/filter. Instead an event just signals "the queue changed" and
-// the panels refetch what they are actually showing.
 export function useAgentSocket(workspaceId: number | null, onQueueChanged: () => void) {
   const [socket, setSocket] = useState<Socket | null>(null);
   const [liveMessages, setLiveMessages] = useState<LiveMessage[]>([]);
 
-  // Held in a ref so the effect below depends only on workspaceId — a parent passing an
-  // inline callback must not tear down and rebuild the socket on every render.
   const onQueueChangedRef = useRef(onQueueChanged);
   onQueueChangedRef.current = onQueueChanged;
 
   useEffect(() => {
     if (!workspaceId) return;
-    const token = getToken();
-    if (!token) return;
 
-    const agentSocket = connectAgentSocket(token, workspaceId);
+    const agentSocket = connectAgentSocket(workspaceId);
     setSocket(agentSocket);
 
     const changed = () => onQueueChangedRef.current();
-    // 'ready' fires only after the gateway's async handleConnection has finished registering
-    // this socket in AgentPresenceService. Refetching here is what stops the page from
-    // showing "1 agent online" in the header while the presence list still says Offline —
-    // the panels were fetched before this connection existed.
+
     agentSocket.on('ready', changed);
     agentSocket.on('session-escalated', changed);
     agentSocket.on('session-claimed', changed);
@@ -50,9 +38,7 @@ export function useAgentSocket(workspaceId: number | null, onQueueChanged: () =>
     agentSocket.on('answer', (payload: { answer: string }) => {
       setLiveMessages((prev) => [...prev, { from: 'ai', text: payload.answer }]);
     });
-    // Sent by the server just before it disconnects this socket: this user was removed, left,
-    // or lost handoff.work. Without handling it the console would sit there looking live on a
-    // dead socket. A full navigation re-reads /auth/me, so the app reflects the new access.
+
     agentSocket.on('access-revoked', (payload: { reason: string }) => {
       notifyError(
         new Error(

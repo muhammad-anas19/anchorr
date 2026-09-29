@@ -10,7 +10,8 @@ import { Badge, Card } from '../../shared/ui/primitives';
 import { Icon } from '../../shared/ui/Icon';
 import { ApiError } from '../../shared/api/client';
 import { toMessage, notifySuccess } from '../../shared/ui/toast';
-import { clearToken, getToken, setToken } from '../../shared/auth/token';
+import { clearSession, getToken, setSession } from '../../shared/auth/token';
+import { endSession } from '../../shared/auth/session';
 import { setPreferredWorkspace } from '../../shared/workspace/preferredWorkspace';
 import { login, me } from '../auth/api';
 import { RoleBadge } from '../members/RoleBadge';
@@ -105,7 +106,7 @@ export function AcceptInvitation() {
       );
     } catch {
       // An expired or garbage stored token is the same as being signed out.
-      clearToken();
+      clearSession();
       setViewer({ kind: 'signed-out' });
     }
   }, []);
@@ -153,8 +154,7 @@ export function AcceptInvitation() {
     setBusy(true);
     setError(null);
     try {
-      const { accessToken } = await login(load.preview.email, password);
-      setToken(accessToken);
+      setSession(await login(load.preview.email, password));
       finish(await acceptInvitation(token));
     } catch (err) {
       await handleFailure(err);
@@ -178,7 +178,7 @@ export function AcceptInvitation() {
     setError(null);
     try {
       const result = await acceptInvitationWithSignup(token, password);
-      setToken(result.accessToken);
+      setSession(result);
       finish(result);
     } catch (err) {
       await handleFailure(err);
@@ -188,7 +188,9 @@ export function AcceptInvitation() {
   }
 
   function signOutForThisInvite() {
-    clearToken();
+    // Revokes the refresh token server-side too, not just locally — otherwise signing out to
+    // accept an invite as someone else would leave the previous session's token alive.
+    void endSession();
     setViewer({ kind: 'signed-out' });
     setError(null);
   }

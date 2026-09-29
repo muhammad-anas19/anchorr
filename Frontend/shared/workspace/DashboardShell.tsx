@@ -4,7 +4,8 @@ import { ReactNode, useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { me, Membership } from '../../features/auth/api';
 import { getWidgetSettings } from '../../features/widgetSettings/api';
-import { clearToken, getToken } from '../auth/token';
+import { clearSession, getToken } from '../auth/token';
+import { endSession } from '../auth/session';
 import { WorkspaceProvider } from './WorkspaceContext';
 import { WorkspacePicker } from './WorkspacePicker';
 import { Sidebar } from './Sidebar';
@@ -46,7 +47,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
         }
       })
       .catch(() => {
-        clearToken();
+        clearSession();
         router.replace('/login');
       });
   }, [router]);
@@ -91,7 +92,9 @@ export function DashboardShell({ children }: { children: ReactNode }) {
   }, []);
 
   function handleLogout() {
-    clearToken();
+    // Not awaited: local tokens are already gone by the time endSession() returns its promise,
+    // so the user leaves immediately and the server-side revoke finishes on its own.
+    void endSession();
     router.replace('/login');
   }
 

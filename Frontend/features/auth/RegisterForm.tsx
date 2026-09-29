@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { register } from './api';
 import { notifySuccess, toMessage } from '../../shared/ui/toast';
-import { setToken } from '../../shared/auth/token';
+import { setSession } from '../../shared/auth/token';
 import { Button } from '../../shared/ui/Button';
 import { TextField } from '../../shared/ui/TextField';
 import { ErrorBanner } from '../../shared/ui/ErrorBanner';
@@ -25,8 +25,7 @@ export function RegisterForm() {
     try {
       // Registering creates the workspace itself and makes this user its owner
       // (AuthService.register, Phase 2) — there's no separate "create a workspace" step.
-      const { accessToken } = await register(email, password, workspaceName);
-      setToken(accessToken);
+      setSession(await register(email, password, workspaceName));
       notifySuccess(`Workspace “${workspaceName}” created — you're its owner.`);
       router.push('/documents');
     } catch (err) {

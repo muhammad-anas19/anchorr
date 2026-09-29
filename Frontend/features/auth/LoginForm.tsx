@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { login } from './api';
 import { notifySuccess, toMessage } from '../../shared/ui/toast';
-import { setToken } from '../../shared/auth/token';
+import { setSession } from '../../shared/auth/token';
 import { Button } from '../../shared/ui/Button';
 import { TextField } from '../../shared/ui/TextField';
 import { ErrorBanner } from '../../shared/ui/ErrorBanner';
@@ -22,8 +22,7 @@ export function LoginForm() {
     setError(null);
     setSubmitting(true);
     try {
-      const { accessToken } = await login(email, password);
-      setToken(accessToken);
+      setSession(await login(email, password));
       notifySuccess('Signed in.');
       router.push('/documents');
     } catch (err) {

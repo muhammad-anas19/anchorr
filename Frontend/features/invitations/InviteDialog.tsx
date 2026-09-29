@@ -65,7 +65,6 @@ export function InviteDialog({
     setTrackingGaveUp(false);
   }, []);
 
-  // Fresh form each time it opens, so "Invite another" and reopening behave the same way.
   useEffect(() => {
     if (open) reset();
   }, [open, reset]);
@@ -77,9 +76,6 @@ export function InviteDialog({
       .catch(() => setRoles([]));
   }, [open, roles, workspaceId]);
 
-  // Step 4: follow the email from "queued" to "sent" (or "failed"). Polling, because the worker
-  // reports into the database and there is no push channel to the inviter's browser for it.
-  // Bounded: an email that stays queued for 45 s is shown as "still queued", not polled forever.
   useEffect(() => {
     if (step !== 3 || !invitation || invitation.emailStatus !== 'queued') return;
     const controller = new AbortController();
@@ -125,7 +121,6 @@ export function InviteDialog({
       onInvited(created);
       setStep(3);
     } catch (err) {
-      // Send the user back to the step that can fix the problem, with the server's own words.
       const message = toMessage(err, 'Could not send the invitation.');
       if (err instanceof ApiError && err.status === 409) setStep(0); // already a member / already invited
       else if (err instanceof ApiError && err.status === 403) setStep(1); // role above your own

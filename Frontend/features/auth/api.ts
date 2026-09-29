@@ -1,4 +1,5 @@
 import { request } from '../../shared/api/client';
+import type { SessionTokens } from '../../shared/auth/token';
 
 export interface Membership {
   workspaceId: number;
@@ -9,7 +10,7 @@ export interface Membership {
   permissions: string[];
 }
 
-export function login(email: string, password: string): Promise<{ accessToken: string }> {
+export function login(email: string, password: string): Promise<SessionTokens> {
   return request('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) });
 }
 
@@ -17,7 +18,7 @@ export function register(
   email: string,
   password: string,
   workspaceName: string,
-): Promise<{ accessToken: string }> {
+): Promise<SessionTokens> {
   return request('/auth/register', {
     method: 'POST',
     body: JSON.stringify({ email, password, workspaceName }),

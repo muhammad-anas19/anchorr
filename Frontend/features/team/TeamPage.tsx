@@ -33,11 +33,8 @@ export function TeamPage() {
   const [leaving, setLeaving] = useState(false);
   const [leaveBusy, setLeaveBusy] = useState(false);
   const [counts, setCounts] = useState<Counts | null>(null);
-  // Bumped whenever something changes that the invitations list should re-read.
   const [invitationsVersion, setInvitationsVersion] = useState(0);
 
-  // Totals come from the server's own `total` on a one-row page of each — real counts over the
-  // whole workspace, not a count of whatever page happens to be loaded.
   const refreshCounts = useCallback(async () => {
     try {
       const [members, owners, pending, expired] = await Promise.all([
@@ -67,11 +64,8 @@ export function TeamPage() {
       await leaveWorkspace(workspaceId);
       notifySuccess(`You left ${workspaceName}.`);
       clearPreferredWorkspace();
-      // A full navigation, not a client-side one: every cached piece of this workspace's state
-      // (the shell's memberships, an open agent socket) should be dropped, not reused.
       window.location.assign('/');
     } catch (err) {
-      // The last owner is refused (409) — the server's message says to transfer ownership first.
       notifyError(err, 'Could not leave this workspace.');
       setLeaveBusy(false);
     }

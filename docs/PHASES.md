@@ -25,6 +25,12 @@
 | 17 | Evaluations framework | PENDING | 9, 13 | retrieval metrics vs generation metrics, experiment comparison |
 | 18 | Analytics rollups & production hardening | PENDING | 11, 12, 15, 16, 17 | scheduled rollup/aggregation, Docker Compose for the full stack |
 
+## Out-of-phase work
+
+Feature work that didn't belong to a numbered phase but has its own full write-up:
+
+- **Team management, RBAC and invitations** — see `docs/team-management-and-invitations.md`. Replaced Phase 2's hardcoded `@Roles(...)` with a database-driven `permissions`/`role_permissions` policy (deny-by-default guard, boot-time drift check), added the full member lifecycle (role change, remove, leave, transfer ownership, with `FOR UPDATE`/`FOR SHARE` protecting the last-owner and claim-vs-removal races), and built email invitations end to end (hashed single-use tokens, partial unique index, BullMQ email queue, `/invite` accept page).
+
 ## Locked decisions affecting this roadmap
 
 See `CLAUDE.md` and the `anchor-project-decisions` memory for the full list with reasoning. Summary:
