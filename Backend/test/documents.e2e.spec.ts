@@ -14,6 +14,7 @@ import { getQueueToken } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { DOCUMENT_PROCESSING_QUEUE } from '../src/modules/documents/processing/document-processing.constants';
 import { DOCUMENT_EMBEDDING_QUEUE } from '../src/modules/documents/processing/embedding/document-embedding.constants';
+import { resetDatabase } from './helpers/reset-database';
 
 const STORAGE_DIR = join(process.cwd(), 'storage');
 const FIXTURES_DIR = join(process.cwd(), 'src/modules/documents/processing/extraction/fixtures');
@@ -42,7 +43,7 @@ describe('Documents (e2e)', () => {
   });
 
   beforeEach(async () => {
-    await dataSource.query('TRUNCATE conversation_sessions, conversations, document_chunks, document_contents, documents, refresh_tokens, memberships, users, workspaces RESTART IDENTITY');
+    await resetDatabase(dataSource);
     await rm(STORAGE_DIR, { recursive: true, force: true });
     // Redis has to be reset for the same reason Postgres is, and it is easy to forget because
     // only Postgres is visible in the line above. TRUNCATE ... RESTART IDENTITY sends document

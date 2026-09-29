@@ -4,6 +4,9 @@ export interface Membership {
   workspaceId: number;
   workspaceName: string;
   role: 'owner' | 'agent' | 'viewer';
+  // The keys this role holds in this workspace (e.g. 'members.invite'), straight from the
+  // server's role_permissions — the UI decides what to show from these, not from the role name.
+  permissions: string[];
 }
 
 export function login(email: string, password: string): Promise<{ accessToken: string }> {

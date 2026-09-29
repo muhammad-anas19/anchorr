@@ -10,6 +10,7 @@ import { EmbeddingProvider } from '../../../../embedding/embedding-provider.inte
 import { Job } from 'bullmq';
 import { DocumentEmbeddingJobData } from './document-embedding.constants';
 import { AnswerCacheService } from '../../../../cache/answer-cache.service';
+import { resetDatabase } from '../../../../../test/helpers/reset-database';
 
 describe('DocumentEmbeddingProcessor', () => {
   let app: INestApplication;
@@ -33,9 +34,7 @@ describe('DocumentEmbeddingProcessor', () => {
   });
 
   beforeEach(async () => {
-    await dataSource.query(
-      'TRUNCATE conversation_sessions, conversations, document_chunks, document_contents, documents, refresh_tokens, memberships, users, workspaces RESTART IDENTITY',
-    );
+    await resetDatabase(dataSource);
   });
 
   async function createDocumentWithChunks(chunkCount: number): Promise<Document> {

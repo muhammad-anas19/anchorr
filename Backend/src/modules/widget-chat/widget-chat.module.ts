@@ -8,6 +8,7 @@ import { ConversationSession } from '../../database/entities/conversation-sessio
 import { RedisModule } from '../../redis/redis.module';
 import { RealtimeModule } from '../../realtime/realtime.module';
 import { AnswerModule } from '../answer/answer.module';
+import { TenancyModule } from '../tenancy/tenancy.module';
 import { WidgetChatGateway } from './widget-chat.gateway';
 import { WidgetRateLimitGuard } from './widget-rate-limit.guard';
 
@@ -17,6 +18,7 @@ import { WidgetRateLimitGuard } from './widget-rate-limit.guard';
     RedisModule,
     RealtimeModule,
     AnswerModule,
+    TenancyModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

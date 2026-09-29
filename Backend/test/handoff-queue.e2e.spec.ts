@@ -10,6 +10,7 @@ import { MembershipRole } from '../src/database/entities/membership-role.enum';
 import { AgentPresenceService } from '../src/realtime/agent-presence.service';
 import { HIGH_PRIORITY_WAIT_SECONDS } from '../src/modules/handoff/handoff-queue.interface';
 import { HandoffService } from '../src/modules/handoff/handoff.service';
+import { resetDatabase } from './helpers/reset-database';
 
 // Sessions and turns are inserted directly rather than driven through a real /ask call.
 // That is deliberate and not a shortcut: what is under test here is the queue's SQL —
@@ -38,9 +39,7 @@ describe('Agent console queue (e2e)', () => {
   });
 
   beforeEach(async () => {
-    await dataSource.query(
-      'TRUNCATE conversation_sessions, conversations, document_chunks, document_contents, documents, refresh_tokens, memberships, users, workspaces RESTART IDENTITY',
-    );
+    await resetDatabase(dataSource);
   });
 
   async function registerOwner(email: string, workspaceName: string) {

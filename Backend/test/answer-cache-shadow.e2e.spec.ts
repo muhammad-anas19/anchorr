@@ -6,6 +6,7 @@ import { AppModule } from '../src/app.module';
 import { EMBEDDING_PROVIDER, EmbeddingProvider } from '../src/embedding/embedding-provider.interface';
 import { ANSWER_GENERATION_PROVIDER } from '../src/generation/answer-generation-provider.interface';
 import { AnswerCacheService } from '../src/cache/answer-cache.service';
+import { resetDatabase } from './helpers/reset-database';
 
 // REAL Gemini embeddings, unlike answer-cache.e2e.spec.ts. This suite is about what real
 // vectors do — above all, that a negation pair with opposite answers embeds almost identically
@@ -41,9 +42,7 @@ describe('Answer cache — shadow semantic tier (e2e)', () => {
   });
 
   beforeEach(async () => {
-    await dataSource.query(
-      'TRUNCATE conversation_sessions, conversations, document_chunks, document_contents, documents, refresh_tokens, memberships, users, workspaces RESTART IDENTITY',
-    );
+    await resetDatabase(dataSource);
     generateCalls = 0;
   });
 

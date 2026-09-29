@@ -10,6 +10,7 @@ import { Membership } from '../src/database/entities/membership.entity';
 import { MembershipRole } from '../src/database/entities/membership-role.enum';
 import { EMBEDDING_PROVIDER, EmbeddingProvider } from '../src/embedding/embedding-provider.interface';
 import { ANSWER_GENERATION_PROVIDER } from '../src/generation/answer-generation-provider.interface';
+import { resetDatabase } from './helpers/reset-database';
 
 describe('Agent takeover of a claimed conversation (e2e)', () => {
   let app: INestApplication;
@@ -47,9 +48,7 @@ describe('Agent takeover of a claimed conversation (e2e)', () => {
   });
 
   beforeEach(async () => {
-    await dataSource.query(
-      'TRUNCATE conversation_sessions, conversations, document_chunks, document_contents, documents, refresh_tokens, memberships, users, workspaces RESTART IDENTITY',
-    );
+    await resetDatabase(dataSource);
   });
 
   afterEach(() => {

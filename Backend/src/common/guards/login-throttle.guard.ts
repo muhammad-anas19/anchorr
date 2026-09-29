@@ -2,6 +2,7 @@ import { CanActivate, ExecutionContext, HttpException, HttpStatus, Inject, Injec
 import type Redis from 'ioredis';
 import { REDIS_CLIENT } from '../../redis/redis.module';
 import { FixedWindowRateLimiter } from '../rate-limit/fixed-window-rate-limiter';
+import { normalizeEmail } from '../utils/normalize-email';
 
 const MAX_ATTEMPTS = 5;
 const WINDOW_SECONDS = 60;
@@ -22,7 +23,12 @@ export class LoginThrottleGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
-    const email = request.body?.email ?? 'unknown';
+    // Normalised HERE, not left to LoginDto's @Transform. In NestJS guards run BEFORE pipes, so
+    // this guard sees the raw body. Keyed on the raw email, "Anas@x.com", "ANAS@x.com" and
+    // "anas@x.com" were three separate counters — five guesses each, and unlimited guesses in
+    // total against one account, simply by varying capitalisation.
+    const rawEmail = request.body?.email;
+    const email = typeof rawEmail === 'string' ? normalizeEmail(rawEmail) : 'unknown';
     const { limited } = await this.limiter.hit(`login-attempts:${email}:${request.ip}`);
 
     if (limited) {

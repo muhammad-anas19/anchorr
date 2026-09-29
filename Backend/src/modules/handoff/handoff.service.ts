@@ -9,6 +9,7 @@ import { Membership } from '../../database/entities/membership.entity';
 import { RealtimeBroadcaster } from '../../realtime/realtime-broadcaster.service';
 import { AgentPresenceService } from '../../realtime/agent-presence.service';
 import { agentsRoom } from '../../realtime/rooms';
+import { lockMembershipForShare } from '../tenancy/membership-locks';
 import {
   buildCursorPage,
   buildOffsetPage,
@@ -270,15 +271,24 @@ export class HandoffService {
   // separate "check unclaimed, then update" steps (Q2/Q4). Whether *this* call's UPDATE
   // actually changed anything is the only truth that matters; the follow-up lookup on a
   // miss exists purely to give a precise error message, not to establish correctness.
+  //
+  // The membership share-lock closes a race with member removal. WorkspaceGuard checked
+  // membership when the request arrived, but a removal can commit between that check and this
+  // UPDATE — leaving a conversation claimed by someone no longer in the workspace, invisible to
+  // the removal's own "release their claimed sessions" step because it wasn't claimed yet when
+  // that step ran. See lockMembershipForShare.
   async claim(workspaceId: number, sessionId: string, userId: number): Promise<ConversationSession> {
-    const result = await this.sessions
-      .createQueryBuilder()
-      .update(ConversationSession)
-      .set({ status: ConversationSessionStatus.CLAIMED, claimedByUserId: userId, claimedAt: () => 'now()' })
-      .where('workspace_id = :workspaceId', { workspaceId })
-      .andWhere('session_id = :sessionId', { sessionId })
-      .andWhere('status = :status', { status: ConversationSessionStatus.ESCALATED })
-      .execute();
+    const result = await this.dataSource.transaction(async (manager) => {
+      await lockMembershipForShare(manager, workspaceId, userId);
+      return manager
+        .createQueryBuilder()
+        .update(ConversationSession)
+        .set({ status: ConversationSessionStatus.CLAIMED, claimedByUserId: userId, claimedAt: () => 'now()' })
+        .where('workspace_id = :workspaceId', { workspaceId })
+        .andWhere('session_id = :sessionId', { sessionId })
+        .andWhere('status = :status', { status: ConversationSessionStatus.ESCALATED })
+        .execute();
+    });
 
     if (result.affected === 0) {
       const existing = await this.sessions.findOne({ where: { workspaceId, sessionId } });

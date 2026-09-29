@@ -17,13 +17,14 @@ import { ConfigService } from '@nestjs/config';
 import { Server, Socket } from 'socket.io';
 import { Workspace } from '../../database/entities/workspace.entity';
 import { Membership } from '../../database/entities/membership.entity';
-import { MembershipRole } from '../../database/entities/membership-role.enum';
+import { Permission } from '../../common/permissions/permission.enum';
+import { PermissionsService } from '../tenancy/permissions.service';
 import { ConversationSession } from '../../database/entities/conversation-session.entity';
 import { ConversationSessionStatus } from '../../database/entities/conversation-session-status.enum';
 import { AnswerService } from '../answer/answer.service';
 import { RealtimeBroadcaster } from '../../realtime/realtime-broadcaster.service';
 import { AgentPresenceService } from '../../realtime/agent-presence.service';
-import { conversationRoom, agentsRoom } from '../../realtime/rooms';
+import { agentUserRoom, conversationRoom, agentsRoom } from '../../realtime/rooms';
 import { WidgetMessageDto } from './dto/widget-message.dto';
 import { JoinConversationDto } from './dto/join-conversation.dto';
 import { AgentMessageDto } from './dto/agent-message.dto';
@@ -60,6 +61,7 @@ export class WidgetChatGateway implements OnGatewayConnection, OnGatewayDisconne
     private readonly configService: ConfigService,
     private readonly broadcaster: RealtimeBroadcaster,
     private readonly presence: AgentPresenceService,
+    private readonly permissions: PermissionsService,
   ) {}
 
   afterInit(server: Server): void {
@@ -137,7 +139,9 @@ export class WidgetChatGateway implements OnGatewayConnection, OnGatewayDisconne
     }
 
     const membership = await this.memberships.findOne({ where: { workspaceId, userId } });
-    if (!membership || membership.role === MembershipRole.VIEWER) {
+    // The same permission the REST claim/resolve routes require, not a hardcoded "not a viewer"
+    // check — so granting or revoking handoff.work changes both surfaces at once.
+    if (!membership || !this.permissions.has(membership.role, Permission.HANDOFF_WORK)) {
       client.disconnect(true);
       return;
     }
@@ -147,7 +151,7 @@ export class WidgetChatGateway implements OnGatewayConnection, OnGatewayDisconne
     // out is not available to take a conversation, and one who logged in this morning and
     // walked away is not either.
     this.presence.add(workspaceId, userId);
-    await client.join(agentsRoom(workspaceId));
+    await client.join([agentsRoom(workspaceId), agentUserRoom(workspaceId, userId)]);
     client.emit('ready');
   }
 

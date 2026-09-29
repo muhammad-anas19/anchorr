@@ -16,6 +16,7 @@ import {
 import { DocumentProcessingProcessor } from '../src/modules/documents/processing/document-processing.processor';
 import { DOCUMENT_EMBEDDING_QUEUE } from '../src/modules/documents/processing/embedding/document-embedding.constants';
 import { DocumentEmbeddingProcessor } from '../src/modules/documents/processing/embedding/document-embedding.processor';
+import { resetDatabase } from './helpers/reset-database';
 
 const STORAGE_DIR = join(process.cwd(), 'storage');
 const FIXTURES_DIR = join(process.cwd(), 'src/modules/documents/processing/extraction/fixtures');
@@ -76,7 +77,7 @@ describe('Document processing queue (e2e)', () => {
   });
 
   beforeEach(async () => {
-    await dataSource.query('TRUNCATE conversation_sessions, conversations, document_chunks, document_contents, documents, refresh_tokens, memberships, users, workspaces RESTART IDENTITY');
+    await resetDatabase(dataSource);
     await rm(STORAGE_DIR, { recursive: true, force: true });
   });
 

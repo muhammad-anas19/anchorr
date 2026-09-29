@@ -6,6 +6,7 @@ import { AppModule } from '../src/app.module';
 import { EMBEDDING_PROVIDER, EmbeddingProvider } from '../src/embedding/embedding-provider.interface';
 import { ANSWER_GENERATION_PROVIDER } from '../src/generation/answer-generation-provider.interface';
 import { CONFIDENT_DISTANCE_THRESHOLD } from '../src/modules/answer/answer.service';
+import { resetDatabase } from './helpers/reset-database';
 
 // Real Gemini embeddings throughout — the whole phase is about how semantic and lexical
 // search disagree, and a fake embedding provider would make that disagreement fictional.
@@ -35,9 +36,7 @@ describe('Hybrid search (e2e)', () => {
   });
 
   beforeEach(async () => {
-    await dataSource.query(
-      'TRUNCATE conversation_sessions, conversations, document_chunks, document_contents, documents, refresh_tokens, memberships, users, workspaces RESTART IDENTITY',
-    );
+    await resetDatabase(dataSource);
   });
 
   async function register(email: string, workspaceName: string) {

@@ -4,6 +4,7 @@ import { DataSource } from 'typeorm';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { EMBEDDING_PROVIDER, EmbeddingProvider } from '../src/embedding/embedding-provider.interface';
+import { resetDatabase } from './helpers/reset-database';
 
 describe('Retrieval (e2e)', () => {
   let app: INestApplication;
@@ -24,9 +25,7 @@ describe('Retrieval (e2e)', () => {
   });
 
   beforeEach(async () => {
-    await dataSource.query(
-      'TRUNCATE conversation_sessions, conversations, document_chunks, document_contents, documents, refresh_tokens, memberships, users, workspaces RESTART IDENTITY',
-    );
+    await resetDatabase(dataSource);
   });
 
   async function register(email: string, workspaceName: string) {

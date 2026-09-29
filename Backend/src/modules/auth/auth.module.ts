@@ -13,12 +13,14 @@ import { PasswordService } from './password.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { LoginThrottleGuard } from '../../common/guards/login-throttle.guard';
 import { RedisModule } from '../../redis/redis.module';
+import { TenancyModule } from '../tenancy/tenancy.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([User, Workspace, Membership, RefreshToken]),
     PassportModule,
     RedisModule,
+    TenancyModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -29,6 +31,6 @@ import { RedisModule } from '../../redis/redis.module';
   ],
   controllers: [AuthController],
   providers: [AuthService, PasswordService, JwtStrategy, LoginThrottleGuard],
-  exports: [AuthService],
+  exports: [AuthService, PasswordService],
 })
 export class AuthModule {}

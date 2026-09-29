@@ -13,11 +13,12 @@ import { PasswordService } from './password.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 
-interface TokenPair {
+export interface TokenPair {
   accessToken: string;
   refreshToken: string;
 }
 
+import { PermissionsService } from '../tenancy/permissions.service';
 @Injectable()
 export class AuthService {
   constructor(
@@ -28,6 +29,7 @@ export class AuthService {
     private readonly passwordService: PasswordService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    private readonly permissions: PermissionsService,
   ) {}
 
   // Lets a freshly-logged-in client (the Frontend console, Phase 12) discover which
@@ -45,6 +47,9 @@ export class AuthService {
         workspaceId: m.workspaceId,
         workspaceName: m.workspace.name,
         role: m.role,
+        // For the UI to hide what the user cannot do. Never the thing that stops them — every
+        // route still checks on the server; this only saves them clicking a button that 403s.
+        permissions: this.permissions.forRole(m.role),
       })),
     };
   }
@@ -112,7 +117,9 @@ export class AuthService {
     await this.refreshTokens.update({ tokenHash }, { revokedAt: new Date() });
   }
 
-  private async issueTokenPair(userId: number): Promise<TokenPair> {
+  // Public so accept-and-sign-up (InvitationsModule) can sign the new user in with exactly the
+  // same token rules as register and login.
+  async issueTokenPair(userId: number): Promise<TokenPair> {
     const accessToken = await this.jwtService.signAsync(
       { sub: userId },
       { expiresIn: this.configService.get<string>('JWT_ACCESS_EXPIRES_IN') },

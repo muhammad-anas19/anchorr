@@ -8,6 +8,7 @@ import { EMBEDDING_PROVIDER } from '../src/embedding/embedding-provider.interfac
 import { ANSWER_GENERATION_PROVIDER } from '../src/generation/answer-generation-provider.interface';
 import { REDIS_CLIENT } from '../src/redis/redis.module';
 import { AnswerCacheService, normalizeQuestion } from '../src/cache/answer-cache.service';
+import { resetDatabase } from './helpers/reset-database';
 
 // Both providers are counting substitutes, and that is the point rather than a shortcut:
 // "a hit is fast" proves nothing, "a hit made ZERO embedding calls and ZERO generation calls"
@@ -68,9 +69,7 @@ describe('Answer cache (e2e)', () => {
   // random publicKey precisely so that cannot happen — and leaving Redis dirty is what makes
   // every test in this file an implicit proof of it.
   beforeEach(async () => {
-    await dataSource.query(
-      'TRUNCATE conversation_sessions, conversations, document_chunks, document_contents, documents, refresh_tokens, memberships, users, workspaces RESTART IDENTITY',
-    );
+    await resetDatabase(dataSource);
     calls.embed = 0;
     calls.generate = 0;
     failGeneration = false;
@@ -180,9 +179,7 @@ describe('Answer cache (e2e)', () => {
 
       // Exactly what the test harness does between tests — and what a restored backup or a
       // RESTART IDENTITY does in real life. Redis is untouched.
-      await dataSource.query(
-        'TRUNCATE conversation_sessions, conversations, document_chunks, document_contents, documents, refresh_tokens, memberships, users, workspaces RESTART IDENTITY',
-      );
+      await resetDatabase(dataSource);
       const second = await register('someone@else.com', 'A Different Company');
       expect(second.workspaceId).toBe(first.workspaceId);
       await seedChunk(second.workspaceId, 'Refunds take 90 days here.', unit(0));
