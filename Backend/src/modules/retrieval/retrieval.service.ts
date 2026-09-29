@@ -31,11 +31,7 @@ export class RetrievalService {
     k: number = DEFAULT_K,
   ): Promise<RetrievalResult> {
     const queryEmbedding = await this.embeddingProvider.embed(query);
-    // pgvector expects its own literal text format ("[0.1,0.2,...]"), not a plain JS array —
-    // TypeORM only performs that conversion automatically for entity columns going through
-    // the repository API, not for a raw dataSource.query() parameter, so it's done by hand
-    // here. The explicit ::vector cast tells Postgres how to interpret that string, since a
-    // raw query parameter otherwise arrives untyped.
+
     const embeddingLiteral = `[${queryEmbedding.join(',')}]`;
 
     // One statement, not two round trips: retrieval is synchronous (Phase 8) with a live
@@ -136,6 +132,7 @@ export class RetrievalService {
         keywordRank: row.keywordRank === null ? null : Number(row.keywordRank),
         rrfScore: Number(row.rrfScore),
       })),
+      queryEmbedding,
     };
   }
 

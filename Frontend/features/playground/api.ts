@@ -28,6 +28,9 @@ export interface AnswerResult {
   promptTokens: number | null;
   totalTokens: number | null;
   retrievedChunks: RetrievedChunkSummary[];
+  // Phase 14. hit = served from cache (no embedding, no generation); miss = eligible but not
+  // cached yet; bypass = this turn used conversation history and was never eligible.
+  cache: 'hit' | 'miss' | 'bypass';
 }
 
 // The retrieval settings actually in force, read from the Backend rather than restated here

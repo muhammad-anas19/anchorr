@@ -1,3 +1,4 @@
+import { AnswerCacheService } from '../../cache/answer-cache.service';
 import { ConflictException, Inject, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { InjectQueue } from '@nestjs/bullmq';
@@ -38,6 +39,7 @@ export class DocumentsService {
     @InjectQueue(DOCUMENT_PROCESSING_QUEUE) private readonly processingQueue: Queue<DocumentProcessingJobData>,
     @InjectQueue(DOCUMENT_EMBEDDING_QUEUE) private readonly embeddingQueue: Queue<DocumentEmbeddingJobData>,
     @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly answerCache: AnswerCacheService,
   ) {}
 
   async upload(workspaceId: number, uploadedByUserId: number, file: UploadedFileLike): Promise<Document> {
@@ -105,6 +107,9 @@ export class DocumentsService {
     const document = await this.getOne(workspaceId, documentId);
     await this.storage.delete(document.storageKey);
     await this.documents.remove(document);
+    // Its chunks are gone (cascade), so any cached answer citing them is now grounded in
+    // content that no longer exists.
+    await this.answerCache.bumpKnowledgeVersion(workspaceId);
   }
 
   // Looks for a currently in-flight job (in either queue) for this document and returns

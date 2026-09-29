@@ -15,6 +15,7 @@ import { DocumentProcessingProcessor } from './processing/document-processing.pr
 import { DOCUMENT_EMBEDDING_QUEUE } from './processing/embedding/document-embedding.constants';
 import { DocumentEmbeddingProcessor } from './processing/embedding/document-embedding.processor';
 import { EmbeddingModule } from '../../embedding/embedding.module';
+import { CacheModule } from '../../cache/cache.module';
 
 @Module({
   // Membership must be imported here too (not just inside TenancyModule) because WorkspaceGuard
@@ -24,6 +25,7 @@ import { EmbeddingModule } from '../../embedding/embedding.module';
     TypeOrmModule.forFeature([Document, DocumentContent, DocumentChunk, Membership]),
     TenancyModule,
     EmbeddingModule,
+    CacheModule,
     BullModule.registerQueue({ name: DOCUMENT_PROCESSING_QUEUE }, { name: DOCUMENT_EMBEDDING_QUEUE }),
   ],
   controllers: [DocumentsController],

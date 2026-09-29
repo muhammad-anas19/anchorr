@@ -1,3 +1,4 @@
+import { AnswerCacheService } from '../../../cache/answer-cache.service';
 import { Inject, Logger } from '@nestjs/common';
 import { InjectQueue, OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
@@ -26,6 +27,7 @@ export class DocumentProcessingProcessor extends WorkerHost {
     @Inject(STORAGE_ADAPTER) private readonly storage: StorageAdapter,
     @InjectDataSource() private readonly dataSource: DataSource,
     @InjectQueue(DOCUMENT_EMBEDDING_QUEUE) private readonly embeddingQueue: Queue<DocumentEmbeddingJobData>,
+    private readonly answerCache: AnswerCacheService,
   ) {
     super();
   }
@@ -101,6 +103,12 @@ export class DocumentProcessingProcessor extends WorkerHost {
         })),
       );
     });
+
+    // The chunk set just changed. The new chunks have no embeddings yet, but content_tsv is
+    // generated on insert, so keyword search can see them immediately — the searchable content
+    // is already different, and an answer cached before this moment may no longer be right.
+    // The embedding processor bumps again at 'ready', when the vector side catches up.
+    await this.answerCache.bumpKnowledgeVersion(document.workspaceId);
 
     // Status deliberately stays 'processing' here, not 'ready' — a document isn't actually
     // usable for retrieval (Phase 8) until every chunk has an embedding too. The embedding

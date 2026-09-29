@@ -21,4 +21,8 @@ export interface RetrievedChunk {
 // eventually timing or fallback flags) has somewhere to live that is not a per-chunk field.
 export interface RetrievalResult {
   chunks: RetrievedChunk[];
+  // The question's own embedding, which retrieval had to compute anyway. Returned so callers
+  // that need it again (Phase 14's shadow cache lookup) reuse it instead of paying for a second
+  // identical embedding call.
+  queryEmbedding: number[];
 }

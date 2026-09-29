@@ -13,13 +13,40 @@ export function chunkCountLabel(count: number): string {
   return `${count.toLocaleString()} chunk${count === 1 ? '' : 's'}`;
 }
 
-function Tile({ label, value }: { label: string; value: string | number }) {
+function Tile({ label, value, color }: { label: string; value: string | number; color?: string }) {
   return (
     <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 10 }}>
       <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>{label}</div>
-      <div style={{ font: '500 12px/1.3 var(--font-mono)', marginTop: 6, wordBreak: 'break-word' }}>{value}</div>
+      <div style={{ font: '500 12px/1.3 var(--font-mono)', marginTop: 6, wordBreak: 'break-word', color }}>{value}</div>
     </div>
   );
+}
+
+// Capitalised the way the prototype shows it ("Miss"). Bypass is visually quieter than Miss on
+// purpose: a miss is a cache that might warm up, a bypass is a turn that was never eligible.
+const CACHE_DISPLAY: Record<AnswerResult['cache'], { label: string; color: string }> = {
+  hit: { label: 'Hit', color: 'var(--ok)' },
+  miss: { label: 'Miss', color: 'var(--muted)' },
+  bypass: { label: 'Bypass', color: 'var(--faint)' },
+};
+
+// One sentence describing what the model was actually given. Keyed on what really happened,
+// not on promptTokens alone: null tokens meant BOTH "refused, model never called" and
+// "escalated, model called and failed" — and the old single message described only the first.
+function footerText(result: AnswerResult): string {
+  const chunks = `${result.retrievedChunks.length} chunk${result.retrievedChunks.length === 1 ? '' : 's'}`;
+  if (result.cache === 'hit') {
+    return `Served from cache — no prompt was sent this time. The chunks shown are the retrieval that produced the original answer.`;
+  }
+  if (result.status === 'refused') {
+    return 'No prompt was sent — the closest match was outside the confidence threshold, so the model was never called.';
+  }
+  if (result.status === 'escalated') {
+    return `Prompt assembled from ${chunks}, but the model call failed, so the conversation was escalated to a person.`;
+  }
+  return result.promptTokens === null
+    ? `Prompt assembled from ${chunks}.`
+    : `Prompt assembled from ${chunks} · ${result.promptTokens.toLocaleString()} context tokens.`;
 }
 
 export function RetrievalInspector({ result, config }: { result: AnswerResult | null; config: AnswerConfig | null }) {
@@ -39,13 +66,18 @@ export function RetrievalInspector({ result, config }: { result: AnswerResult | 
         What the model was given for the last answer.
       </p>
 
-      {/* The prototype's fourth tile is a cache hit/miss. There is no cache in this system
-          yet, so that slot shows the confidence threshold instead — a real number this screen
-          genuinely depends on, rather than a plausible-looking "Miss". */}
+      {/* The prototype's exact four tiles. Until Phase 14 the Cache slot showed the confidence
+          threshold instead, because there was no cache and a "Miss" would have described a
+          system that did not exist. It is real now; the threshold is still shown where it
+          matters, in the explanation under a refused answer. */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 18 }}>
         <Tile label="Search mode" value={config?.searchMode ?? '—'} />
         <Tile label="Top k" value={config?.topK ?? '—'} />
-        <Tile label="Threshold" value={config ? config.confidenceThreshold.toFixed(2) : '—'} />
+        <Tile
+          label="Cache"
+          value={result ? CACHE_DISPLAY[result.cache].label : '—'}
+          color={result ? CACHE_DISPLAY[result.cache].color : undefined}
+        />
         <Tile label="Model" value={config?.model ?? '—'} />
       </div>
 
@@ -130,11 +162,7 @@ export function RetrievalInspector({ result, config }: { result: AnswerResult | 
               lineHeight: 1.55,
             }}
           >
-            {result.promptTokens === null
-              ? 'No prompt was sent — the closest match was outside the confidence threshold, so the model was never called.'
-              : `Prompt assembled from ${result.retrievedChunks.length} chunk${
-                  result.retrievedChunks.length === 1 ? '' : 's'
-                } · ${result.promptTokens.toLocaleString()} context tokens.`}
+            {footerText(result)}
           </div>
         </>
       )}

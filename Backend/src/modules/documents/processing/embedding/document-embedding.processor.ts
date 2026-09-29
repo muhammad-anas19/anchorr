@@ -1,3 +1,4 @@
+import { AnswerCacheService } from '../../../../cache/answer-cache.service';
 import { Inject, Logger } from '@nestjs/common';
 import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -17,6 +18,7 @@ export class DocumentEmbeddingProcessor extends WorkerHost {
     @InjectRepository(Document) private readonly documents: Repository<Document>,
     @InjectRepository(DocumentChunk) private readonly chunks: Repository<DocumentChunk>,
     @Inject(EMBEDDING_PROVIDER) private readonly embeddingProvider: EmbeddingProvider,
+    private readonly answerCache: AnswerCacheService,
   ) {
     super();
   }
@@ -68,6 +70,10 @@ export class DocumentEmbeddingProcessor extends WorkerHost {
     // hours ahead of createdAt for the same document — visible in the "Last indexed" column
     // as a time in the future.
     await this.documents.update(documentId, { status: DocumentStatus.READY, readyAt: () => 'now()' });
+    // Every chunk is now visible to vector search too. Any answer cached while this document
+    // was half-indexed (keyword-visible, vector-invisible) was grounded in an incomplete
+    // knowledge base and must not outlive this moment.
+    await this.answerCache.bumpKnowledgeVersion(document.workspaceId);
   }
 
   @OnWorkerEvent('failed')

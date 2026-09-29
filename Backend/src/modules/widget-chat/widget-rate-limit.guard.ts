@@ -1,35 +1,40 @@
-import { CanActivate, ExecutionContext, Inject, Injectable } from '@nestjs/common';
+import { CanActivate, ExecutionContext, Inject, Injectable, Logger } from '@nestjs/common';
 import { WsException } from '@nestjs/websockets';
 import type { Socket } from 'socket.io';
 import type Redis from 'ioredis';
 import { REDIS_CLIENT } from '../../redis/redis.module';
+import { FixedWindowRateLimiter } from '../../common/rate-limit/fixed-window-rate-limiter';
 
 const MAX_MESSAGES = 20;
 const WINDOW_SECONDS = 60;
 
-// Mirrors LoginThrottleGuard's shape (Phase 2) — a narrow, Redis-backed stopgap ahead of Phase
-// 15's general rate limiting, same justification: this is the first surface protected only by
-// a credential that's necessarily visible to anyone who views the embedding page's own HTML.
+// A narrow stopgap ahead of Phase 15's general rate limiting. This is the first surface
+// protected only by a credential visible to anyone who views the embedding page's own HTML.
 // Keyed by publicKey, not by socket id or IP — the key itself is what could be copied and
 // abused from anywhere, so the throttle has to follow the key, not any one connection using it.
+//
+// Fails open to a per-instance fallback when Redis is unavailable (Phase 14 decision): the
+// widget stays usable during a Redis outage, while an abuser still cannot burn the Gemini
+// quota without limit.
 @Injectable()
 export class WidgetRateLimitGuard implements CanActivate {
-  constructor(@Inject(REDIS_CLIENT) private readonly redis: Redis) {}
+  private readonly limiter: FixedWindowRateLimiter;
+
+  constructor(@Inject(REDIS_CLIENT) redis: Redis) {
+    this.limiter = new FixedWindowRateLimiter(redis, new Logger(WidgetRateLimitGuard.name), {
+      limit: MAX_MESSAGES,
+      windowSeconds: WINDOW_SECONDS,
+    });
+  }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const client = context.switchToWs().getClient<Socket>();
     const publicKey = client.handshake.auth?.publicKey as string | undefined;
-    const key = `widget-messages:${publicKey}`;
+    const { limited } = await this.limiter.hit(`widget-messages:${publicKey}`);
 
-    const count = await this.redis.incr(key);
-    if (count === 1) {
-      await this.redis.expire(key, WINDOW_SECONDS);
-    }
-
-    if (count > MAX_MESSAGES) {
+    if (limited) {
       throw new WsException('Too many messages. Please slow down.');
     }
-
     return true;
   }
 }

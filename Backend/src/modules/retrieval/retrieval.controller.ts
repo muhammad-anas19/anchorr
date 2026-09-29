@@ -10,7 +10,10 @@ export class RetrievalController {
   constructor(private readonly retrievalService: RetrievalService) {}
 
   @Post()
-  retrieve(@Param('workspaceId', ParseIntPipe) workspaceId: number, @Body() dto: RetrieveDto) {
-    return this.retrievalService.retrieveRelevantChunks(workspaceId, dto.query, dto.k);
+  async retrieve(@Param('workspaceId', ParseIntPipe) workspaceId: number, @Body() dto: RetrieveDto) {
+    // The query embedding is internal plumbing (768 floats) — useful to AnswerService, noise in
+    // a debugging endpoint's response.
+    const { chunks } = await this.retrievalService.retrieveRelevantChunks(workspaceId, dto.query, dto.k);
+    return { chunks };
   }
 }

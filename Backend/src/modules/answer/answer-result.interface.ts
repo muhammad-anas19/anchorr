@@ -38,6 +38,15 @@ export interface RetrievedChunkSummary {
   keywordRank: number | null;
 }
 
+// Three values, not a boolean, because "not cached" has two very different causes:
+//   hit    — served from cache; no embedding call, no generation call.
+//   miss   — eligible for caching, but nothing cached yet (or it was invalidated).
+//   bypass — deliberately NOT eligible: this turn used conversation history, so its answer
+//            depends on context that is not in the question text and must never be shared.
+// A playground showing "miss" for a follow-up question would suggest a cache that is simply
+// cold; "bypass" says truthfully that the cache was never going to be used.
+export type CacheOutcome = 'hit' | 'miss' | 'bypass';
+
 export interface AnswerResult {
   answer: string;
   citations: Citation[];
@@ -46,4 +55,5 @@ export interface AnswerResult {
   promptTokens: number | null;
   totalTokens: number | null;
   retrievedChunks: RetrievedChunkSummary[];
+  cache: CacheOutcome;
 }

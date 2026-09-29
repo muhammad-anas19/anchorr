@@ -9,12 +9,14 @@ import { DocumentEmbeddingProcessor } from './document-embedding.processor';
 import { EmbeddingProvider } from '../../../../embedding/embedding-provider.interface';
 import { Job } from 'bullmq';
 import { DocumentEmbeddingJobData } from './document-embedding.constants';
+import { AnswerCacheService } from '../../../../cache/answer-cache.service';
 
 describe('DocumentEmbeddingProcessor', () => {
   let app: INestApplication;
   let dataSource: DataSource;
   let documents: Repository<Document>;
   let chunks: Repository<DocumentChunk>;
+  let answerCache: AnswerCacheService;
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
@@ -23,6 +25,7 @@ describe('DocumentEmbeddingProcessor', () => {
     dataSource = moduleRef.get(DataSource);
     documents = dataSource.getRepository(Document);
     chunks = dataSource.getRepository(DocumentChunk);
+    answerCache = moduleRef.get(AnswerCacheService);
   });
 
   afterAll(async () => {
@@ -70,7 +73,7 @@ describe('DocumentEmbeddingProcessor', () => {
     const provider: EmbeddingProvider = {
       embed: async () => fakeVector(calls++),
     };
-    const processor = new DocumentEmbeddingProcessor(documents, chunks, provider);
+    const processor = new DocumentEmbeddingProcessor(documents, chunks, provider, answerCache);
 
     await processor.process({ data: { documentId: document.id }, updateProgress: async () => {} } as unknown as Job<DocumentEmbeddingJobData>);
 
@@ -91,7 +94,7 @@ describe('DocumentEmbeddingProcessor', () => {
     const provider: EmbeddingProvider = {
       embed: async () => fakeVector(calls++),
     };
-    const processor = new DocumentEmbeddingProcessor(documents, chunks, provider);
+    const processor = new DocumentEmbeddingProcessor(documents, chunks, provider, answerCache);
 
     await processor.process({ data: { documentId: document.id }, updateProgress: async () => {} } as unknown as Job<DocumentEmbeddingJobData>);
 
@@ -117,7 +120,7 @@ describe('DocumentEmbeddingProcessor', () => {
           return fakeVector(calls);
         },
       };
-      const processor = new DocumentEmbeddingProcessor(documents, chunks, provider);
+      const processor = new DocumentEmbeddingProcessor(documents, chunks, provider, answerCache);
 
       await expect(
         processor.process({ data: { documentId: document.id }, updateProgress: async () => {} } as unknown as Job<DocumentEmbeddingJobData>),
@@ -140,7 +143,7 @@ describe('DocumentEmbeddingProcessor', () => {
     await documents.update(document.id, { status: DocumentStatus.READY });
     let calls = 0;
     const provider: EmbeddingProvider = { embed: async () => { calls++; return fakeVector(0); } };
-    const processor = new DocumentEmbeddingProcessor(documents, chunks, provider);
+    const processor = new DocumentEmbeddingProcessor(documents, chunks, provider, answerCache);
 
     await processor.process({ data: { documentId: document.id }, updateProgress: async () => {} } as unknown as Job<DocumentEmbeddingJobData>);
 
