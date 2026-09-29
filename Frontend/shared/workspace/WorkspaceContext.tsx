@@ -7,6 +7,11 @@ export interface WorkspaceContextValue {
   workspaceId: number;
   role: Membership['role'];
   workspaceName: string;
+  userId: number;
+  permissions: string[];
+  // What the UI shows or hides. Never what stops anyone: every one of these is checked again on
+  // the server for every request. Hiding a button only spares the user a click that would 403.
+  can: (permission: string) => boolean;
 }
 
 const WorkspaceContext = createContext<WorkspaceContextValue | null>(null);

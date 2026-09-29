@@ -10,6 +10,9 @@ import { DocumentContent } from './entities/document-content.entity';
 import { DocumentChunk } from './entities/document-chunk.entity';
 import { Conversation } from './entities/conversation.entity';
 import { ConversationSession } from './entities/conversation-session.entity';
+import { PermissionEntity } from './entities/permission.entity';
+import { RolePermission } from './entities/role-permission.entity';
+import { Invitation } from './entities/invitation.entity';
 
 config();
 
@@ -30,6 +33,9 @@ export const AppDataSource = new DataSource({
     DocumentChunk,
     Conversation,
     ConversationSession,
+    PermissionEntity,
+    RolePermission,
+    Invitation,
   ],
   migrations: ['src/database/migrations/*.ts'],
   synchronize: false,

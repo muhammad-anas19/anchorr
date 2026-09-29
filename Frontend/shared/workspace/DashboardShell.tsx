@@ -9,6 +9,7 @@ import { WorkspaceProvider } from './WorkspaceContext';
 import { WorkspacePicker } from './WorkspacePicker';
 import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
+import { getPreferredWorkspace, setPreferredWorkspace } from './preferredWorkspace';
 
 const RAIL_KEY = 'anchor.sidebarExpanded';
 
@@ -19,6 +20,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const [memberships, setMemberships] = useState<Membership[] | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [userId, setUserId] = useState<number | null>(null);
   const [workspaceId, setWorkspaceId] = useState<number | null>(null);
   const [expanded, setExpanded] = useState(true);
   const [widgetLive, setWidgetLive] = useState<boolean | null>(null);
@@ -33,8 +35,14 @@ export function DashboardShell({ children }: { children: ReactNode }) {
       .then((result) => {
         setMemberships(result.memberships);
         setUserEmail(result.email);
+        setUserId(result.userId);
+        // One workspace: no choice to make. Several: reopen the one used last, if the user is
+        // still a member of it — otherwise fall through to the picker.
+        const preferred = getPreferredWorkspace();
         if (result.memberships.length === 1) {
           setWorkspaceId(result.memberships[0].workspaceId);
+        } else if (preferred && result.memberships.some((m) => m.workspaceId === preferred)) {
+          setWorkspaceId(preferred);
         }
       })
       .catch(() => {
@@ -55,9 +63,9 @@ export function DashboardShell({ children }: { children: ReactNode }) {
   const current = memberships?.find((m) => m.workspaceId === workspaceId) ?? null;
 
   useEffect(() => {
-    // Owner-only endpoint: an agent cannot read the allowlist, so for them the badge stays
-    // null (unknown) rather than guessing at a state.
-    if (!workspaceId || current?.role !== 'owner') return;
+    // widget.view is owner-only today: without it the allowlist can't be read, so the badge
+    // stays null (unknown) rather than guessing at a state.
+    if (!workspaceId || !current?.permissions.includes('widget.view')) return;
     let cancelled = false;
     getWidgetSettings(workspaceId)
       .then((settings) => {
@@ -69,7 +77,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [workspaceId, current?.role]);
+  }, [workspaceId, current?.permissions]);
 
   const toggleRail = useCallback(() => {
     setExpanded((value) => {
@@ -87,14 +95,31 @@ export function DashboardShell({ children }: { children: ReactNode }) {
     router.replace('/login');
   }
 
-  if (!memberships || !userEmail) return null;
+  if (!memberships || !userEmail || userId === null) return null;
 
   if (!workspaceId || !current) {
-    return <WorkspacePicker memberships={memberships} onSelect={setWorkspaceId} />;
+    return (
+      <WorkspacePicker
+        memberships={memberships}
+        onSelect={(id) => {
+          setPreferredWorkspace(id);
+          setWorkspaceId(id);
+        }}
+      />
+    );
   }
 
   return (
-    <WorkspaceProvider value={{ workspaceId, role: current.role, workspaceName: current.workspaceName }}>
+    <WorkspaceProvider
+      value={{
+        workspaceId,
+        role: current.role,
+        workspaceName: current.workspaceName,
+        userId,
+        permissions: current.permissions,
+        can: (permission) => current.permissions.includes(permission),
+      }}
+    >
       <div style={{ display: 'flex', height: '100vh', minHeight: 640, overflow: 'hidden' }}>
         <Sidebar
           workspaceName={current.workspaceName}

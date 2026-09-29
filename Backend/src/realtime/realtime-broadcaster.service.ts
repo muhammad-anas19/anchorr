@@ -19,4 +19,21 @@ export class RealtimeBroadcaster {
   broadcast(room: string, event: string, payload: unknown): void {
     this.server?.to(room).emit(event, payload);
   }
+
+  // Ends every socket in a room, telling the client why first.
+  //
+  // Needed because a WebSocket's authorization happens once, at connect. REST is re-checked on
+  // every request (WorkspaceGuard reads memberships each time), so removing a member ends their
+  // REST access instantly — but an already-open socket would keep receiving the workspace's
+  // events and could keep sending, for as long as the tab stays open.
+  //
+  // disconnectSockets(false) disconnects from this namespace only and sends a proper disconnect
+  // packet, AFTER the event above on the same connection, so the client sees the reason before
+  // the disconnect — and a server-initiated disconnect is one socket.io-client does NOT
+  // auto-reconnect from, which a dropped connection would be.
+  revokeRoom(room: string, event: string, payload: unknown): void {
+    if (!this.server) return;
+    this.server.to(room).emit(event, payload);
+    this.server.in(room).disconnectSockets(false);
+  }
 }

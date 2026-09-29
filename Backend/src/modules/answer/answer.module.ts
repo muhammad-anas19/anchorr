@@ -6,6 +6,7 @@ import { TenancyModule } from '../tenancy/tenancy.module';
 import { RetrievalModule } from '../retrieval/retrieval.module';
 import { GenerationModule } from '../../generation/generation.module';
 import { HandoffModule } from '../handoff/handoff.module';
+import { CacheModule } from '../../cache/cache.module';
 import { AnswerController } from './answer.controller';
 import { AnswerService } from './answer.service';
 
@@ -16,6 +17,7 @@ import { AnswerService } from './answer.service';
     RetrievalModule,
     GenerationModule,
     HandoffModule,
+    CacheModule,
   ],
   controllers: [AnswerController],
   providers: [AnswerService],

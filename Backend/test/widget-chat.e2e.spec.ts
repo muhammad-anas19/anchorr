@@ -8,6 +8,7 @@ import { AppModule } from '../src/app.module';
 import { REDIS_CLIENT } from '../src/redis/redis.module';
 import { EMBEDDING_PROVIDER, EmbeddingProvider } from '../src/embedding/embedding-provider.interface';
 import { ANSWER_GENERATION_PROVIDER } from '../src/generation/answer-generation-provider.interface';
+import { resetDatabase } from './helpers/reset-database';
 
 describe('Widget chat gateway (e2e)', () => {
   let app: INestApplication;
@@ -38,9 +39,7 @@ describe('Widget chat gateway (e2e)', () => {
   });
 
   beforeEach(async () => {
-    await dataSource.query(
-      'TRUNCATE conversation_sessions, conversations, document_chunks, document_contents, documents, refresh_tokens, memberships, users, workspaces RESTART IDENTITY',
-    );
+    await resetDatabase(dataSource);
   });
 
   afterEach(() => {

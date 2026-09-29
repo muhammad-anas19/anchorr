@@ -11,8 +11,8 @@ import { getWidgetSettings, updateAllowedOrigins, WidgetSettings } from './api';
 const ORIGIN_PATTERN = /^https?:\/\/[a-zA-Z0-9.-]+(:\d+)?$/;
 
 export function WidgetSettingsPage() {
-  const { workspaceId, role } = useWorkspace();
-  const canEdit = role === 'owner';
+  const { workspaceId, can } = useWorkspace();
+  const canEdit = can('widget.manage');
   const [settings, setSettings] = useState<WidgetSettings | null>(null);
   const [newOrigin, setNewOrigin] = useState('');
   const [error, setError] = useState<string | null>(null);

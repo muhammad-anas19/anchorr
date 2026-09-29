@@ -42,4 +42,21 @@ describe('Login throttling (e2e)', () => {
       .send({ email, password: 'wrong-password' })
       .expect(429);
   });
+
+  // Premise first: the guard runs BEFORE LoginDto's @Transform, so if it keyed on the raw body,
+  // every casing would get its own five attempts. This proves they share one counter.
+  it('counts different capitalisations of one email against the same limit', async () => {
+    const variants = [email, email.toUpperCase(), '  Throttle-Test@Northwind.com', 'THROTTLE-test@northwind.COM', email];
+    for (const variant of variants) {
+      await request(app.getHttpServer())
+        .post('/auth/login')
+        .send({ email: variant, password: 'wrong-password' })
+        .expect(401);
+    }
+
+    await request(app.getHttpServer())
+      .post('/auth/login')
+      .send({ email: 'Throttle-Test@NORTHWIND.com', password: 'wrong-password' })
+      .expect(429);
+  });
 });

@@ -9,6 +9,7 @@ import { Membership } from '../../database/entities/membership.entity';
 import { RealtimeBroadcaster } from '../../realtime/realtime-broadcaster.service';
 import { AgentPresenceService } from '../../realtime/agent-presence.service';
 import { agentsRoom } from '../../realtime/rooms';
+import { lockMembershipForShare } from '../tenancy/membership-locks';
 import {
   buildCursorPage,
   buildOffsetPage,
@@ -270,15 +271,24 @@ export class HandoffService {
   // separate "check unclaimed, then update" steps (Q2/Q4). Whether *this* call's UPDATE
   // actually changed anything is the only truth that matters; the follow-up lookup on a
   // miss exists purely to give a precise error message, not to establish correctness.
+  //
+  // The membership share-lock closes a race with member removal. WorkspaceGuard checked
+  // membership when the request arrived, but a removal can commit between that check and this
+  // UPDATE — leaving a conversation claimed by someone no longer in the workspace, invisible to
+  // the removal's own "release their claimed sessions" step because it wasn't claimed yet when
+  // that step ran. See lockMembershipForShare.
   async claim(workspaceId: number, sessionId: string, userId: number): Promise<ConversationSession> {
-    const result = await this.sessions
-      .createQueryBuilder()
-      .update(ConversationSession)
-      .set({ status: ConversationSessionStatus.CLAIMED, claimedByUserId: userId, claimedAt: () => 'now()' })
-      .where('workspace_id = :workspaceId', { workspaceId })
-      .andWhere('session_id = :sessionId', { sessionId })
-      .andWhere('status = :status', { status: ConversationSessionStatus.ESCALATED })
-      .execute();
+    const result = await this.dataSource.transaction(async (manager) => {
+      await lockMembershipForShare(manager, workspaceId, userId);
+      return manager
+        .createQueryBuilder()
+        .update(ConversationSession)
+        .set({ status: ConversationSessionStatus.CLAIMED, claimedByUserId: userId, claimedAt: () => 'now()' })
+        .where('workspace_id = :workspaceId', { workspaceId })
+        .andWhere('session_id = :sessionId', { sessionId })
+        .andWhere('status = :status', { status: ConversationSessionStatus.ESCALATED })
+        .execute();
+    });
 
     if (result.affected === 0) {
       const existing = await this.sessions.findOne({ where: { workspaceId, sessionId } });
@@ -332,22 +342,38 @@ export class HandoffService {
   // downgrades a session that's already claimed or resolved back to escalated — a session
   // an agent already owns (or already closed out) shouldn't silently reappear in the queue
   // just because one more turn on it happened to fail.
+  // escalated_at is set by Postgres' own now(), NOT by a JS `new Date()`, and that is a
+  // correctness requirement rather than a style choice. These columns are `timestamp without
+  // time zone`, and node-postgres serialises a JS Date into the HOST's local wall clock —
+  // so on a UTC+5 machine, `new Date()` stored 04:21 while Postgres' now() stored 23:21 the
+  // previous day. Every wait time here is computed in SQL as `now() - escalated_at`, so a
+  // JS-written value produced a wait of MINUS five hours, which the GREATEST(...,0) in
+  // listQueue then silently flattened to "0m 00s". Every real escalation looked brand new
+  // forever and could never reach High priority. Measured at exactly 18000 seconds of skew.
   async recordEscalation(workspaceId: number, sessionId: string): Promise<void> {
     const existing = await this.sessions.findOne({ where: { workspaceId, sessionId } });
     if (!existing) {
-      await this.sessions.save({
-        workspaceId,
-        sessionId,
-        status: ConversationSessionStatus.ESCALATED,
-        escalatedAt: new Date(),
-      });
+      await this.sessions
+        .createQueryBuilder()
+        .insert()
+        .into(ConversationSession)
+        .values({
+          workspaceId,
+          sessionId,
+          status: ConversationSessionStatus.ESCALATED,
+          escalatedAt: () => 'now()',
+        })
+        .execute();
       this.broadcaster.broadcast(agentsRoom(workspaceId), 'session-escalated', { sessionId });
       return;
     }
     if (existing.status === ConversationSessionStatus.OPEN) {
-      existing.status = ConversationSessionStatus.ESCALATED;
-      existing.escalatedAt = new Date();
-      await this.sessions.save(existing);
+      await this.sessions
+        .createQueryBuilder()
+        .update(ConversationSession)
+        .set({ status: ConversationSessionStatus.ESCALATED, escalatedAt: () => 'now()' })
+        .where('id = :id', { id: existing.id })
+        .execute();
       this.broadcaster.broadcast(agentsRoom(workspaceId), 'session-escalated', { sessionId });
     }
   }

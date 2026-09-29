@@ -9,6 +9,8 @@ import { Membership } from '../src/database/entities/membership.entity';
 import { MembershipRole } from '../src/database/entities/membership-role.enum';
 import { AgentPresenceService } from '../src/realtime/agent-presence.service';
 import { HIGH_PRIORITY_WAIT_SECONDS } from '../src/modules/handoff/handoff-queue.interface';
+import { HandoffService } from '../src/modules/handoff/handoff.service';
+import { resetDatabase } from './helpers/reset-database';
 
 // Sessions and turns are inserted directly rather than driven through a real /ask call.
 // That is deliberate and not a shortcut: what is under test here is the queue's SQL —
@@ -37,9 +39,7 @@ describe('Agent console queue (e2e)', () => {
   });
 
   beforeEach(async () => {
-    await dataSource.query(
-      'TRUNCATE conversation_sessions, conversations, document_chunks, document_contents, documents, refresh_tokens, memberships, users, workspaces RESTART IDENTITY',
-    );
+    await resetDatabase(dataSource);
   });
 
   async function registerOwner(email: string, workspaceName: string) {
@@ -69,17 +69,29 @@ describe('Agent console queue (e2e)', () => {
     claimedByUserId?: number;
     resolvedAt?: 'today' | 'yesterday';
   }): Promise<void> {
+    // resolved_at is built from Postgres' own now(), never a JS Date. These are `timestamp
+    // without time zone` columns and the pg driver writes a JS Date as the HOST's local wall
+    // clock — on a UTC+5 machine that is five hours ahead of now(), which put a "yesterday"
+    // row on the wrong side of date_trunc('day', now()) and made this suite fail depending
+    // on the time of day it ran. Seeding the same way the application writes keeps the test
+    // measuring behaviour rather than the host's timezone.
+    const resolvedExpression =
+      opts.resolvedAt === 'today'
+        ? `date_trunc('day', now()) + interval '1 hour'`
+        : opts.resolvedAt === 'yesterday'
+          ? `date_trunc('day', now()) - interval '1 hour'`
+          : 'NULL';
+
     await dataSource.query(
       `INSERT INTO conversation_sessions
          (workspace_id, session_id, status, claimed_by_user_id, escalated_at, resolved_at)
-       VALUES ($1, $2, $3, $4, now() - ($5 || ' seconds')::interval, $6)`,
+       VALUES ($1, $2, $3, $4, now() - ($5 || ' seconds')::interval, ${resolvedExpression})`,
       [
         opts.workspaceId,
         opts.sessionId,
         opts.status,
         opts.claimedByUserId ?? null,
         String(opts.waitedSeconds ?? 0),
-        opts.resolvedAt === 'today' ? new Date() : opts.resolvedAt === 'yesterday' ? new Date(Date.now() - 86_400_000) : null,
       ],
     );
   }
@@ -269,6 +281,31 @@ describe('Agent console queue (e2e)', () => {
     });
   });
 
+  describe('timestamp clock consistency', () => {
+    // Regression test for a real bug measured at exactly 18000 seconds (5 hours) of skew.
+    // escalated_at used to be written with a JS `new Date()`, which node-postgres serialises
+    // into the HOST's local wall clock for a `timestamp without time zone` column, while
+    // every wait time is computed in SQL as `now() - escalated_at` in UTC. The result was a
+    // NEGATIVE wait, which GREATEST(...,0) in listQueue silently flattened to "0m 00s" — so
+    // every real escalation looked brand new forever and could never reach High priority.
+    // A wrong result that raises no error is exactly the kind this project keeps getting hit
+    // by, so the invariant is now asserted rather than assumed.
+    it('writes escalated_at on the database clock, so SQL-computed wait times are sane', async () => {
+      const { workspaceId } = await registerOwner('anas@northwind.com', 'Northwind Devices');
+      const handoff = app.get(HandoffService);
+
+      await handoff.recordEscalation(workspaceId, 'clock-check');
+
+      const [row] = await dataSource.query(
+        `SELECT ABS(EXTRACT(EPOCH FROM (now() - escalated_at)))::int AS skew_seconds
+         FROM conversation_sessions WHERE workspace_id = $1 AND session_id = 'clock-check'`,
+        [workspaceId],
+      );
+      // Anything beyond a few seconds means the two clocks disagree; the old bug gave 18000.
+      expect(row.skew_seconds).toBeLessThan(60);
+    });
+  });
+
   describe('presence', () => {
     it('reports online only for an agent with a live connection, and counts their claimed sessions', async () => {
       const { token, workspaceId, userId: ownerId } = await registerOwner('anas@northwind.com', 'Northwind Devices');
@@ -407,7 +444,7 @@ describe('Agent console queue (e2e)', () => {
         .expect(200);
 
       expect(res.body).toMatchObject({
-        searchMode: 'Vector',
+        searchMode: 'Hybrid',
         topK: 5,
         confidenceThreshold: 0.45,
         searchableChunks: 0,

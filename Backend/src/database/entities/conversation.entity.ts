@@ -54,6 +54,27 @@ export class Conversation {
   @Column({ type: 'jsonb' })
   citations: StoredCitation[];
 
+  // --- Phase 14: shadow semantic cache ---------------------------------------------------
+  // Recorded, never served from. See AddShadowCacheColumnsToConversations for the reasoning.
+
+  @Column({ name: 'question_embedding', type: 'vector', length: 768, nullable: true, select: false })
+  questionEmbedding: number[] | null;
+
+  @Column({ name: 'knowledge_version', type: 'integer', nullable: true })
+  knowledgeVersion: number | null;
+
+  @Column({ name: 'prompt_version', type: 'integer', nullable: true })
+  promptVersion: number | null;
+
+  @Column({ name: 'cache_outcome', type: 'varchar', length: 8, nullable: true })
+  cacheOutcome: 'hit' | 'miss' | 'bypass' | null;
+
+  @Column({ name: 'nearest_prior_conversation_id', type: 'integer', nullable: true })
+  nearestPriorConversationId: number | null;
+
+  @Column({ name: 'nearest_prior_distance', type: 'float', nullable: true })
+  nearestPriorDistance: number | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 }

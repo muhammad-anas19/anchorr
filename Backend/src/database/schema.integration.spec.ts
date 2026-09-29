@@ -4,6 +4,7 @@ import { Workspace } from './entities/workspace.entity';
 import { User } from './entities/user.entity';
 import { Membership } from './entities/membership.entity';
 import { MembershipRole } from './entities/membership-role.enum';
+import { resetDatabase } from '../../test/helpers/reset-database';
 
 describe('Workspace/User/Membership schema', () => {
   beforeAll(async () => {
@@ -15,7 +16,7 @@ describe('Workspace/User/Membership schema', () => {
   });
 
   beforeEach(async () => {
-    await AppDataSource.query('TRUNCATE conversation_sessions, conversations, document_chunks, document_contents, documents, refresh_tokens, memberships, users, workspaces RESTART IDENTITY');
+    await resetDatabase(AppDataSource);
   });
 
   it('rejects a duplicate membership for the same workspace and user', async () => {

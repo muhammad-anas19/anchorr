@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Socket } from 'socket.io-client';
 import { connectAgentSocket } from '../../shared/socket/connectAgentSocket';
 import { getToken } from '../../shared/auth/token';
+import { notifyError } from '../../shared/ui/toast';
 
 export interface LiveMessage {
   from: 'customer' | 'agent' | 'ai';
@@ -48,6 +49,20 @@ export function useAgentSocket(workspaceId: number | null, onQueueChanged: () =>
     });
     agentSocket.on('answer', (payload: { answer: string }) => {
       setLiveMessages((prev) => [...prev, { from: 'ai', text: payload.answer }]);
+    });
+    // Sent by the server just before it disconnects this socket: this user was removed, left,
+    // or lost handoff.work. Without handling it the console would sit there looking live on a
+    // dead socket. A full navigation re-reads /auth/me, so the app reflects the new access.
+    agentSocket.on('access-revoked', (payload: { reason: string }) => {
+      notifyError(
+        new Error(
+          payload.reason === 'role-changed'
+            ? 'Your role changed and no longer includes the agent console.'
+            : 'You no longer have access to this workspace.',
+        ),
+        'Access revoked.',
+      );
+      window.setTimeout(() => window.location.assign('/'), 1500);
     });
 
     return () => {

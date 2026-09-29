@@ -7,6 +7,8 @@ import { Membership } from '../../database/entities/membership.entity';
 import { RefreshToken } from '../../database/entities/refresh-token.entity';
 import { AuthService } from './auth.service';
 import { PasswordService } from './password.service';
+import { PermissionsService } from '../tenancy/permissions.service';
+import { resetDatabase } from '../../../test/helpers/reset-database';
 
 describe('AuthService (integration)', () => {
   let authService: AuthService;
@@ -19,6 +21,9 @@ describe('AuthService (integration)', () => {
     } as unknown as ConfigService;
 
     const jwtService = new JwtService({ secret: process.env.JWT_SECRET });
+    // Constructed by hand, so Nest's onModuleInit never runs — load the policy explicitly.
+    const permissionsService = new PermissionsService(AppDataSource);
+    await permissionsService.reload();
 
     authService = new AuthService(
       AppDataSource.getRepository(User),
@@ -28,6 +33,7 @@ describe('AuthService (integration)', () => {
       new PasswordService(),
       jwtService,
       configService,
+      permissionsService,
     );
   });
 
@@ -36,7 +42,7 @@ describe('AuthService (integration)', () => {
   });
 
   beforeEach(async () => {
-    await AppDataSource.query('TRUNCATE conversation_sessions, conversations, document_chunks, document_contents, documents, refresh_tokens, memberships, users, workspaces RESTART IDENTITY');
+    await resetDatabase(AppDataSource);
   });
 
   it('registers a user, creates their workspace, and makes them owner', async () => {
@@ -126,7 +132,12 @@ describe('AuthService (integration)', () => {
     expect(result.userId).toBe(user.id);
     expect(result.email).toBe('anas@northwind.com');
     expect(result.memberships).toEqual([
-      { workspaceId: expect.any(Number), workspaceName: 'Northwind Devices', role: 'owner' },
+      {
+        workspaceId: expect.any(Number),
+        workspaceName: 'Northwind Devices',
+        role: 'owner',
+        permissions: expect.arrayContaining(['members.manage', 'widget.manage']),
+      },
     ]);
   });
 });

@@ -4,6 +4,7 @@ import { DataSource } from 'typeorm';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { EMBEDDING_PROVIDER, EmbeddingProvider } from '../src/embedding/embedding-provider.interface';
+import { resetDatabase } from './helpers/reset-database';
 
 describe('Retrieval (e2e)', () => {
   let app: INestApplication;
@@ -24,9 +25,7 @@ describe('Retrieval (e2e)', () => {
   });
 
   beforeEach(async () => {
-    await dataSource.query(
-      'TRUNCATE conversation_sessions, conversations, document_chunks, document_contents, documents, refresh_tokens, memberships, users, workspaces RESTART IDENTITY',
-    );
+    await resetDatabase(dataSource);
   });
 
   async function register(email: string, workspaceName: string) {
@@ -69,11 +68,19 @@ describe('Retrieval (e2e)', () => {
         .send({ query: 'How do I get my money back?', k: 2 })
         .expect(201);
 
-      expect(res.body).toHaveLength(2);
-      expect(res.body[0].content).toContain('Refunds are available');
-      expect(res.body[0].distance).toBeLessThan(res.body[1].distance);
-      expect(res.body[0]).toHaveProperty('originalFilename', 'refunds.pdf');
-      expect(res.body[0]).toHaveProperty('chunkIndex', 0);
+      // Phase 13 changed the response shape from a bare array to { chunks } and the ordering
+      // from cosine distance to fused RRF score.
+      expect(res.body.chunks).toHaveLength(2);
+      expect(res.body.chunks[0].content).toContain('Refunds are available');
+      expect(res.body.chunks[0]).toHaveProperty('originalFilename', 'refunds.pdf');
+      expect(res.body.chunks[0]).toHaveProperty('chunkIndex', 0);
+
+      // "How do I get my money back?" shares no words with either chunk, so keyword search
+      // contributes nothing here and the vector side alone decides the order — the exact
+      // vocabulary-mismatch case hybrid search must not regress.
+      expect(res.body.chunks[0].keywordRank).toBeNull();
+      expect(res.body.chunks[0].vectorRank).toBe(1);
+      expect(res.body.chunks[0].distance).toBeLessThan(res.body.chunks[1].distance);
     },
     20000,
   );
@@ -97,8 +104,9 @@ describe('Retrieval (e2e)', () => {
         .expect(201);
 
       // Northwind has no chunks of its own and Acme's chunk must never surface here,
-      // regardless of how semantically relevant it would otherwise be.
-      expect(res.body).toHaveLength(0);
+      // regardless of how semantically relevant it would otherwise be. Phase 13 added a
+      // second path into this data (the keyword side), so isolation has to hold on both.
+      expect(res.body.chunks).toHaveLength(0);
     },
     20000,
   );

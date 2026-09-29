@@ -173,7 +173,12 @@ export function ChatTurn({
           >
             {score !== null && `confidence ${score.toFixed(2)}`}
             {result.status === 'answered' && responseTimeMs !== null && ` · ${(responseTimeMs / 1000).toFixed(1)}s`}
-            {result.status === 'answered' && result.totalTokens !== null && ` · ${result.totalTokens.toLocaleString()} tokens`}
+            {/* A hit consumed no tokens; "0 tokens" would read as a bug, "cached" says why. */}
+            {result.status === 'answered' && result.cache === 'hit' && ' · cached'}
+            {result.status === 'answered' &&
+              result.cache !== 'hit' &&
+              result.totalTokens !== null &&
+              ` · ${result.totalTokens.toLocaleString()} tokens`}
             {result.status === 'refused' && ' · refused'}
             {result.status === 'escalated' && ' · escalated'}
           </span>

@@ -11,6 +11,9 @@ import { DocumentContent } from './database/entities/document-content.entity';
 import { DocumentChunk } from './database/entities/document-chunk.entity';
 import { Conversation } from './database/entities/conversation.entity';
 import { ConversationSession } from './database/entities/conversation-session.entity';
+import { PermissionEntity } from './database/entities/permission.entity';
+import { RolePermission } from './database/entities/role-permission.entity';
+import { Invitation } from './database/entities/invitation.entity';
 import { AuthModule } from './modules/auth/auth.module';
 import { WorkspacesModule } from './modules/workspaces/workspaces.module';
 import { DocumentsModule } from './modules/documents/documents.module';
@@ -19,6 +22,7 @@ import { AnswerModule } from './modules/answer/answer.module';
 import { WidgetChatModule } from './modules/widget-chat/widget-chat.module';
 import { HandoffModule } from './modules/handoff/handoff.module';
 import { QueueModule } from './queue/queue.module';
+import { InvitationsModule } from './modules/invitations/invitations.module';
 
 @Module({
   imports: [
@@ -43,6 +47,9 @@ import { QueueModule } from './queue/queue.module';
           DocumentChunk,
           Conversation,
           ConversationSession,
+          PermissionEntity,
+          RolePermission,
+          Invitation,
         ],
         synchronize: false,
       }),
@@ -55,6 +62,7 @@ import { QueueModule } from './queue/queue.module';
     AnswerModule,
     WidgetChatModule,
     HandoffModule,
+    InvitationsModule,
   ],
   controllers: [AppController],
 })

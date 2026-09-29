@@ -113,6 +113,54 @@ const PATHS = {
       <path d="M2.8 10.5v1.9a1.2 1.2 0 0 0 1.2 1.2h8a1.2 1.2 0 0 0 1.2-1.2v-1.9" />
     </>
   ),
+  // Not in the prototype, which has no team-management screens. Drawn to the same 16px grid,
+  // 1.5 stroke and round-free style as the icons above so they sit with them unnoticed.
+  mail: (
+    <>
+      <rect x="2" y="3.5" width="12" height="9" rx="1.5" />
+      <path d="M2.6 4.6L8 8.6l5.4-4" />
+    </>
+  ),
+  check: <path d="M3.5 8.4l2.9 2.9 6.1-6.6" />,
+  close: <path d="M4.2 4.2l7.6 7.6M11.8 4.2l-7.6 7.6" />,
+  userPlus: (
+    <>
+      <circle cx="6.5" cy="5.4" r="2.5" />
+      <path d="M2 13.2c.3-2.4 2.1-3.9 4.5-3.9s4.2 1.5 4.5 3.9" />
+      <path d="M12.6 4.6v4M10.6 6.6h4" />
+    </>
+  ),
+  clock: (
+    <>
+      <circle cx="8" cy="8" r="5.8" />
+      <path d="M8 4.9v3.3l2.1 1.3" />
+    </>
+  ),
+  refresh: (
+    <>
+      <path d="M13.2 8a5.2 5.2 0 1 1-1.6-3.8" />
+      <path d="M13.3 2.6v2.8h-2.8" />
+    </>
+  ),
+  crown: <path d="M2.4 12.3h11.2l.9-7.1-3.6 2.6L8 3.2 5.1 7.8 1.5 5.2z" />,
+  alert: (
+    <>
+      <circle cx="8" cy="8" r="5.8" />
+      <path d="M8 4.9v3.6M8 11.1v.01" />
+    </>
+  ),
+  leave: (
+    <>
+      <path d="M9.4 2.8H4.2a1.2 1.2 0 0 0-1.2 1.2v8a1.2 1.2 0 0 0 1.2 1.2h5.2" />
+      <path d="M7 8h7M11.5 5.5L14 8l-2.5 2.5" />
+    </>
+  ),
+  eye: (
+    <>
+      <path d="M1.6 8S4 3.6 8 3.6 14.4 8 14.4 8 12 12.4 8 12.4 1.6 8 1.6 8z" />
+      <circle cx="8" cy="8" r="2" />
+    </>
+  ),
 } as const;
 
 export type IconName = keyof typeof PATHS;
