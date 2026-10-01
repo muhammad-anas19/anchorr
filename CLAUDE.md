@@ -52,6 +52,8 @@ TypeScript, NestJS, PostgreSQL + pgvector, Redis, BullMQ, Socket.IO, Next.js, St
 Backend/    NestJS API — built starting Phase 1
 Frontend/   Next.js dashboard — built starting Phase 12 (feature-sliced: app/ + features/ + shared/, see Phase 12's "Repo structure" note)
 Widget/     Embeddable vanilla-TS chat widget — built starting Phase 11
+DemoSite/   A fictional customer's marketing site (Next.js, port 3002) to embed and try the widget on —
+            static, three pages; the widget is integrated by the user, not pre-wired (added 2026-10-01)
 docs/
   PHASES.md         full 18-phase roadmap with status
   SETUP.md          local dev environment setup
