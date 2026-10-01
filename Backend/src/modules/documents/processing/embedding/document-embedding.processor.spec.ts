@@ -10,6 +10,7 @@ import { EmbeddingProvider } from '../../../../embedding/embedding-provider.inte
 import { Job } from 'bullmq';
 import { DocumentEmbeddingJobData } from './document-embedding.constants';
 import { AnswerCacheService } from '../../../../cache/answer-cache.service';
+import { UsageMeter } from '../../../../metering/usage-meter.service';
 import { resetDatabase } from '../../../../../test/helpers/reset-database';
 
 describe('DocumentEmbeddingProcessor', () => {
@@ -72,7 +73,7 @@ describe('DocumentEmbeddingProcessor', () => {
     const provider: EmbeddingProvider = {
       embed: async () => fakeVector(calls++),
     };
-    const processor = new DocumentEmbeddingProcessor(documents, chunks, provider, answerCache);
+    const processor = new DocumentEmbeddingProcessor(documents, chunks, provider, answerCache, dataSource, new UsageMeter());
 
     await processor.process({ data: { documentId: document.id }, updateProgress: async () => {} } as unknown as Job<DocumentEmbeddingJobData>);
 
@@ -93,7 +94,7 @@ describe('DocumentEmbeddingProcessor', () => {
     const provider: EmbeddingProvider = {
       embed: async () => fakeVector(calls++),
     };
-    const processor = new DocumentEmbeddingProcessor(documents, chunks, provider, answerCache);
+    const processor = new DocumentEmbeddingProcessor(documents, chunks, provider, answerCache, dataSource, new UsageMeter());
 
     await processor.process({ data: { documentId: document.id }, updateProgress: async () => {} } as unknown as Job<DocumentEmbeddingJobData>);
 
@@ -119,7 +120,7 @@ describe('DocumentEmbeddingProcessor', () => {
           return fakeVector(calls);
         },
       };
-      const processor = new DocumentEmbeddingProcessor(documents, chunks, provider, answerCache);
+      const processor = new DocumentEmbeddingProcessor(documents, chunks, provider, answerCache, dataSource, new UsageMeter());
 
       await expect(
         processor.process({ data: { documentId: document.id }, updateProgress: async () => {} } as unknown as Job<DocumentEmbeddingJobData>),
@@ -142,10 +143,105 @@ describe('DocumentEmbeddingProcessor', () => {
     await documents.update(document.id, { status: DocumentStatus.READY });
     let calls = 0;
     const provider: EmbeddingProvider = { embed: async () => { calls++; return fakeVector(0); } };
-    const processor = new DocumentEmbeddingProcessor(documents, chunks, provider, answerCache);
+    const processor = new DocumentEmbeddingProcessor(documents, chunks, provider, answerCache, dataSource, new UsageMeter());
 
     await processor.process({ data: { documentId: document.id }, updateProgress: async () => {} } as unknown as Job<DocumentEmbeddingJobData>);
 
     expect(calls).toBe(0);
+  });
+
+  describe('usage metering', () => {
+    const run = (processor: DocumentEmbeddingProcessor, documentId: number) =>
+      processor.process({ data: { documentId }, updateProgress: async () => {} } as unknown as Job<DocumentEmbeddingJobData>);
+    const usage = () =>
+      dataSource.query(
+        `SELECT metric, billable, idempotency_key AS key, document_id AS "documentId", attributes
+         FROM usage_events ORDER BY id`,
+      );
+
+    it('records one billable chunk_embedded event per chunk, keyed by chunk id', async () => {
+      const document = await createDocumentWithChunks(3);
+      let calls = 0;
+      const processor = new DocumentEmbeddingProcessor(
+        documents, chunks, { embed: async () => fakeVector(calls++) }, answerCache, dataSource, new UsageMeter(),
+      );
+      await run(processor, document.id);
+
+      const ids = (await chunks.find({ where: { documentId: document.id }, order: { chunkIndex: 'ASC' } })).map((c) => c.id);
+      expect(await usage()).toEqual(
+        ids.map((id) => ({
+          metric: 'chunk_embedded',
+          billable: true,
+          key: `chunk:${id}`,
+          documentId: document.id,
+          attributes: { chunkId: id, characters: 'chunk number 0'.length, model: 'gemini-embedding-001' },
+        })),
+      );
+    });
+
+    // A failure part-way, then the retry: the chunks the first attempt finished were metered
+    // in the same transaction as their embedding, so the retry skips them and meters only
+    // the rest. Total: exactly one event per chunk.
+    it('meters each chunk exactly once across a failed attempt and its retry', async () => {
+      const document = await createDocumentWithChunks(3);
+      let calls = 0;
+      const flaky = new DocumentEmbeddingProcessor(
+        documents,
+        chunks,
+        {
+          embed: async () => {
+            calls++;
+            if (calls === 2) throw new Error('Simulated Gemini failure');
+            return fakeVector(calls);
+          },
+        },
+        answerCache,
+        dataSource,
+        new UsageMeter(),
+      );
+      await expect(run(flaky, document.id)).rejects.toThrow('Simulated Gemini failure');
+      expect(await usage()).toHaveLength(1);
+
+      await run(flaky, document.id); // the retry
+      const events = await usage();
+      expect(events).toHaveLength(3);
+      expect(new Set(events.map((e: { key: string }) => e.key)).size).toBe(3);
+    });
+
+    // BullMQ's stall detection can hand a still-running job to a second worker (Phase 4).
+    // Both embed the same chunks; the conditional UPDATE lets only one fill each chunk, and
+    // only that one meters it. Gemini is paid twice — the customer is charged once.
+    it('charges once when two workers run the same job concurrently', async () => {
+      const document = await createDocumentWithChunks(3);
+      let calls = 0;
+      const slow = { embed: async () => { calls++; await new Promise((r) => setTimeout(r, 50)); return fakeVector(calls); } };
+      const a = new DocumentEmbeddingProcessor(documents, chunks, slow, answerCache, dataSource, new UsageMeter());
+      const b = new DocumentEmbeddingProcessor(documents, chunks, slow, answerCache, dataSource, new UsageMeter());
+
+      await Promise.all([run(a, document.id), run(b, document.id)]);
+
+      expect(calls).toBe(6); // both really called the provider
+      expect(await usage()).toHaveLength(3); // but each chunk was charged once
+    });
+
+    // Reprocessing replaces a document's chunks with new rows (Phase 6's delete-then-insert),
+    // so they have new ids and new keys: a genuine re-embed IS billed again.
+    it('bills a reprocessed document again, because its chunks are new', async () => {
+      const document = await createDocumentWithChunks(2);
+      let calls = 0;
+      const processor = new DocumentEmbeddingProcessor(
+        documents, chunks, { embed: async () => fakeVector(calls++) }, answerCache, dataSource, new UsageMeter(),
+      );
+      await run(processor, document.id);
+
+      await chunks.delete({ documentId: document.id });
+      for (let i = 0; i < 2; i++) {
+        await chunks.save({ documentId: document.id, chunkIndex: i, content: `new chunk ${i}`, charStart: 0, charEnd: 10 });
+      }
+      await documents.update(document.id, { status: DocumentStatus.PROCESSING });
+      await run(processor, document.id);
+
+      expect(await usage()).toHaveLength(4);
+    });
   });
 });

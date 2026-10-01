@@ -11,6 +11,9 @@ interface NavItem {
   label: string;
   href?: string;
   badge?: number;
+  // Hidden for anyone without it. The page would only 403 for them, and a link that exists
+  // just to be refused is noise. The server still checks; this only tidies the nav.
+  permission?: string;
 }
 
 // Every section the prototype's nav has, in its order, with its icon. Entries with no `href`
@@ -31,7 +34,7 @@ const SECTIONS: { title?: string; items: NavItem[] }[] = [
     items: [
       { icon: 'analytics', label: 'Analytics' },
       { icon: 'evaluations', label: 'Evaluations' },
-      { icon: 'usage', label: 'Usage & cost' },
+      { icon: 'usage', label: 'Usage & cost', href: '/usage', permission: 'usage.view' },
     ],
   },
   {
@@ -53,10 +56,12 @@ export function Sidebar({
   onToggle,
   onLogout,
   waitingCount,
+  permissions,
 }: {
   workspaceName: string;
   userEmail: string;
   role: string;
+  permissions: string[];
   expanded: boolean;
   onToggle: () => void;
   onLogout: () => void;
@@ -156,7 +161,7 @@ export function Sidebar({
                 {section.title}
               </div>
             )}
-            {section.items.map((item) => (
+            {section.items.filter((item) => !item.permission || permissions.includes(item.permission)).map((item) => (
               <NavRow
                 key={item.label}
                 item={item}

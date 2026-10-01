@@ -16,6 +16,8 @@ export enum Permission {
 
   WORKSPACE_LEAVE = 'workspace.leave',
   WORKSPACE_TRANSFER_OWNERSHIP = 'workspace.transfer_ownership',
+
+  USAGE_VIEW = 'usage.view',
 }
 
 export const ALL_PERMISSIONS: readonly Permission[] = Object.values(Permission);

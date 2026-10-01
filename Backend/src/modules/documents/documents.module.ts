@@ -16,6 +16,7 @@ import { DOCUMENT_EMBEDDING_QUEUE } from './processing/embedding/document-embedd
 import { DocumentEmbeddingProcessor } from './processing/embedding/document-embedding.processor';
 import { EmbeddingModule } from '../../embedding/embedding.module';
 import { CacheModule } from '../../cache/cache.module';
+import { MeteringModule } from '../../metering/metering.module';
 
 @Module({
   // Membership must be imported here too (not just inside TenancyModule) because WorkspaceGuard
@@ -26,6 +27,7 @@ import { CacheModule } from '../../cache/cache.module';
     TenancyModule,
     EmbeddingModule,
     CacheModule,
+    MeteringModule,
     BullModule.registerQueue({ name: DOCUMENT_PROCESSING_QUEUE }, { name: DOCUMENT_EMBEDDING_QUEUE }),
   ],
   controllers: [DocumentsController],

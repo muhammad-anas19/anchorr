@@ -52,6 +52,7 @@ const MATRIX: Array<{ permission: string; call: Call; owner: boolean; agent: boo
     agent: false,
     viewer: false,
   },
+  { permission: 'usage.view', call: { method: 'get', path: '/usage' }, owner: true, agent: false, viewer: false },
 ];
 
 describe('Permissions (e2e)', () => {

@@ -26,6 +26,9 @@
   --btn-bg: #17171a;
   --btn-fg: #ffffff;
   --track: #eeeeec;
+  /* Chart marks. Separate from --accent: validated for a filled mark on this surface
+     (dataviz palette check, lightness band + contrast), which the UI accent is not in dark. */
+  --chart-1: #3459e6;
   --shadow: 0 1px 2px rgba(16, 16, 20, 0.05);
 }
 
@@ -50,6 +53,9 @@
   --btn-bg: #f1f1f3;
   --btn-fg: #0b0b0d;
   --track: #24242a;
+  /* #8ba0ff (the dark --accent) failed the lightness band for a filled mark; one step darker
+     on the same hue passes both checks. */
+  --chart-1: #7388f2;
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
 }
 

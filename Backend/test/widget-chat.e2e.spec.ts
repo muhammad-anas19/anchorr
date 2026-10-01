@@ -293,27 +293,29 @@ describe('Widget chat gateway (e2e)', () => {
     15000,
   );
 
+  // Phase 15 replaced the fixed window with two token buckets. One visitor gets a burst of 10
+  // (WIDGET_SESSION_LIMIT), then the named 'rate-limited' event with a wait, not a raw error.
   it(
-    'throttles a public key past 20 messages per minute',
+    'rate-limits one visitor past their burst, telling them how long to wait',
     async () => {
       const { workspaceId, publicKey } = await registerWorkspace('anas@northwind.com', 'Northwind Devices', [
         'http://widget-host.example',
       ]);
       await seedEmbeddedChunk(workspaceId, 'Refunds are available within 30 days of purchase.');
-      await redis.del(`widget-messages:${publicKey}`);
+      await redis.del(`widget-session:${publicKey}:session-1`, `widget-site:${publicKey}`);
 
       const client = connectClient(publicKey, 'session-1', 'http://widget-host.example');
       await waitFor(client, 'ready');
 
-      for (let i = 0; i < 20; i++) {
-        client.emit('message', { question: 'How many days for a refund?' });
-        await waitFor(client, 'answer');
-      }
+      let answered = 0;
+      let limited: { retryAfterSeconds: number } | null = null;
+      client.on('answer', () => answered++);
+      client.on('rate-limited', (payload: { retryAfterSeconds: number }) => (limited = payload));
+      for (let i = 0; i < 12; i++) client.emit('message', { question: 'How many days for a refund?' });
+      await new Promise((r) => setTimeout(r, 1500));
 
-      client.emit('message', { question: 'How many days for a refund?' });
-      const error = await waitFor<{ message: string } | string>(client, 'exception');
-      const message = typeof error === 'string' ? error : error.message;
-      expect(String(message)).toContain('Too many messages');
+      expect(answered).toBe(10);
+      expect(limited).toEqual({ retryAfterSeconds: expect.any(Number) });
     },
     30000,
   );

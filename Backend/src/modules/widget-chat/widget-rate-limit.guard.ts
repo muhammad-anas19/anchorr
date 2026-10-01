@@ -1,39 +1,49 @@
 import { CanActivate, ExecutionContext, Inject, Injectable, Logger } from '@nestjs/common';
-import { WsException } from '@nestjs/websockets';
 import type { Socket } from 'socket.io';
 import type Redis from 'ioredis';
 import { REDIS_CLIENT } from '../../redis/redis.module';
-import { FixedWindowRateLimiter } from '../../common/rate-limit/fixed-window-rate-limiter';
+import { TokenBucketRateLimiter } from '../../common/rate-limit/token-bucket-rate-limiter';
 
-const MAX_MESSAGES = 20;
-const WINDOW_SECONDS = 60;
-
-// A narrow stopgap ahead of Phase 15's general rate limiting. This is the first surface
-// protected only by a credential visible to anyone who views the embedding page's own HTML.
-// Keyed by publicKey, not by socket id or IP — the key itself is what could be copied and
-// abused from anywhere, so the throttle has to follow the key, not any one connection using it.
+// Two buckets, both of which must have a token.
 //
-// Fails open to a per-instance fallback when Redis is unavailable (Phase 14 decision): the
-// widget stays usable during a Redis outage, while an abuser still cannot burn the Gemini
-// quota without limit.
+// Per public key — the whole embedding site. The key is visible in the page's HTML, so anyone
+// can copy it and send messages from anywhere; this caps what one leaked key can cost.
+//
+// Per visitor session — fairness within a site. With only the site-wide bucket, one visitor
+// hammering the chat would spend the budget every other visitor on that site shares.
+//
+// A token is taken from the site bucket only when the visitor's own bucket allowed the
+// message, so a single abusive visitor can't drain the site's budget with refused requests.
+export const WIDGET_SITE_LIMIT = { capacity: 60, refillPerSecond: 1 };
+export const WIDGET_SESSION_LIMIT = { capacity: 10, refillPerSecond: 1 / 3 };
+
+// Replaces Phase 11's fixed window (20 per minute per key). Fails open to per-instance buckets
+// when Redis is unavailable, as decided in Phase 14.
 @Injectable()
 export class WidgetRateLimitGuard implements CanActivate {
-  private readonly limiter: FixedWindowRateLimiter;
+  private readonly site: TokenBucketRateLimiter;
+  private readonly session: TokenBucketRateLimiter;
 
   constructor(@Inject(REDIS_CLIENT) redis: Redis) {
-    this.limiter = new FixedWindowRateLimiter(redis, new Logger(WidgetRateLimitGuard.name), {
-      limit: MAX_MESSAGES,
-      windowSeconds: WINDOW_SECONDS,
-    });
+    const logger = new Logger(WidgetRateLimitGuard.name);
+    this.site = new TokenBucketRateLimiter(redis, logger, WIDGET_SITE_LIMIT);
+    this.session = new TokenBucketRateLimiter(redis, logger, WIDGET_SESSION_LIMIT);
   }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const client = context.switchToWs().getClient<Socket>();
     const publicKey = client.handshake.auth?.publicKey as string | undefined;
-    const { limited } = await this.limiter.hit(`widget-messages:${publicKey}`);
+    const sessionId = client.handshake.auth?.sessionId as string | undefined;
 
-    if (limited) {
-      throw new WsException('Too many messages. Please slow down.');
+    const own = await this.session.take(`widget-session:${publicKey}:${sessionId}`);
+    const result = own.allowed ? await this.site.take(`widget-site:${publicKey}`) : own;
+
+    if (!result.allowed) {
+      // A named event with the wait, not a generic exception: the widget can tell the visitor
+      // how long to wait instead of showing a raw error. The message is dropped, not queued —
+      // queueing would just replay the burst the limit is refusing.
+      client.emit('rate-limited', { retryAfterSeconds: Math.max(1, Math.ceil(result.retryAfterMs / 1000)) });
+      return false;
     }
     return true;
   }

@@ -1,4 +1,4 @@
-import { Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
+import { Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn, Unique } from 'typeorm';
 import { Workspace } from './workspace.entity';
 import { ConversationStatus } from './conversation-status.enum';
 
@@ -14,6 +14,7 @@ export interface StoredCitation {
 }
 
 @Entity('conversations')
+@Unique('UQ_conversations_idempotency', ['workspaceId', 'idempotencyKey'])
 export class Conversation {
   @PrimaryGeneratedColumn()
   id: number;
@@ -74,6 +75,11 @@ export class Conversation {
 
   @Column({ name: 'nearest_prior_distance', type: 'float', nullable: true })
   nearestPriorDistance: number | null;
+
+  // The client's key for this exact request (Phase 15), already namespaced by caller. Null for
+  // requests that didn't send one. See AnswerService.answer().
+  @Column({ name: 'idempotency_key', type: 'varchar', length: 200, nullable: true })
+  idempotencyKey: string | null;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

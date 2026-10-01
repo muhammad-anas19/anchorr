@@ -56,4 +56,12 @@ export interface AnswerResult {
   totalTokens: number | null;
   retrievedChunks: RetrievedChunkSummary[];
   cache: CacheOutcome;
+  // True when this is the stored answer to an earlier request with the same idempotency key,
+  // returned instead of running the pipeline again. Absent on a freshly produced answer.
+  replayed?: boolean;
+  // Why an escalated turn escalated. Internal: recorded on the usage event and shown to the
+  // tenant, never sent to a widget visitor (the gateway sends a public projection).
+  escalationReason?: EscalationReason;
 }
+
+export type EscalationReason = 'generation_failed' | 'retrieval_failed' | 'quota_exhausted';

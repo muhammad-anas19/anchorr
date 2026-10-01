@@ -10,8 +10,13 @@ import { CacheModule } from '../../cache/cache.module';
 import { AnswerController } from './answer.controller';
 import { AnswerService } from './answer.service';
 
+import { MeteringModule } from '../../metering/metering.module';
+import { RedisModule } from '../../redis/redis.module';
+
 @Module({
   imports: [
+    MeteringModule,
+    RedisModule,
     TypeOrmModule.forFeature([Membership, Conversation]),
     TenancyModule,
     RetrievalModule,

@@ -1,14 +1,16 @@
 import { AnswerCacheService } from '../../../../cache/answer-cache.service';
 import { Inject, Logger } from '@nestjs/common';
 import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { Job } from 'bullmq';
 import { Document } from '../../../../database/entities/document.entity';
 import { DocumentChunk } from '../../../../database/entities/document-chunk.entity';
 import { DocumentStatus } from '../../../../database/entities/document-status.enum';
 import { EMBEDDING_PROVIDER, EmbeddingProvider } from '../../../../embedding/embedding-provider.interface';
 import { DOCUMENT_EMBEDDING_QUEUE, DocumentEmbeddingJobData } from './document-embedding.constants';
+import { EMBEDDING_MODEL } from '../../../../embedding/gemini-embedding.provider';
+import { UsageMeter } from '../../../../metering/usage-meter.service';
 
 @Processor(DOCUMENT_EMBEDDING_QUEUE, { concurrency: 5 })
 export class DocumentEmbeddingProcessor extends WorkerHost {
@@ -19,6 +21,8 @@ export class DocumentEmbeddingProcessor extends WorkerHost {
     @InjectRepository(DocumentChunk) private readonly chunks: Repository<DocumentChunk>,
     @Inject(EMBEDDING_PROVIDER) private readonly embeddingProvider: EmbeddingProvider,
     private readonly answerCache: AnswerCacheService,
+    @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly meter: UsageMeter,
   ) {
     super();
   }
@@ -56,7 +60,7 @@ export class DocumentEmbeddingProcessor extends WorkerHost {
         continue;
       }
       const embedding = await this.embeddingProvider.embed(chunk.content);
-      await this.chunks.update(chunk.id, { embedding });
+      await this.saveAndMeter(document.workspaceId, documentId, chunk, embedding);
       completed += 1;
       await job.updateProgress({ stage: 'embedding', completed, total });
     }
@@ -74,6 +78,40 @@ export class DocumentEmbeddingProcessor extends WorkerHost {
     // was half-indexed (keyword-visible, vector-invisible) was grounded in an incomplete
     // knowledge base and must not outlive this moment.
     await this.answerCache.bumpKnowledgeVersion(document.workspaceId);
+  }
+
+  // One chunk's embedding and its usage event, in one transaction — the same guarantee the
+  // answer path has: a chunk is never embedded without being metered, or metered without
+  // being embedded.
+  //
+  // Two layers stop a double charge when a job runs twice (a retry, or BullMQ's stall
+  // detection handing a still-running job to a second worker, Phase 4):
+  //   - the UPDATE only fills an embedding that is still NULL, and reports whether it did;
+  //   - the event's key is the chunk id, so even a second insert is a no-op.
+  // The chunk id is the right unit on purpose: reprocessing a document replaces its chunks
+  // with NEW ids (Phase 6's delete-then-insert), so a genuine re-embed is billed again while a
+  // retried job for the same chunks is not.
+  //
+  // What it cannot stop: two workers racing on one chunk both CALL Gemini before either
+  // commits. We pay twice; the customer is charged once.
+  private async saveAndMeter(workspaceId: number, documentId: number, chunk: DocumentChunk, embedding: number[]): Promise<void> {
+    await this.dataSource.transaction(async (manager) => {
+      const [, filled] = await manager.query(
+        `UPDATE document_chunks SET embedding = $1::vector WHERE id = $2 AND embedding IS NULL`,
+        [`[${embedding.join(',')}]`, chunk.id],
+      );
+      if (filled === 0) return; // another run got here first — and metered it
+
+      await this.meter.record(manager, {
+        workspaceId,
+        metric: 'chunk_embedded',
+        quantity: 1,
+        billable: true,
+        idempotencyKey: `chunk:${chunk.id}`,
+        documentId,
+        attributes: { chunkId: chunk.id, characters: chunk.content.length, model: EMBEDDING_MODEL },
+      });
+    });
   }
 
   @OnWorkerEvent('failed')

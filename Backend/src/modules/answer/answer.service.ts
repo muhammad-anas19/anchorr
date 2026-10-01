@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { DEFAULT_K, RetrievalService } from '../retrieval/retrieval.service';
 import { GENERATION_MODEL } from '../../generation/gemini-answer-generation.provider';
 import { RetrievedChunk } from '../retrieval/retrieved-chunk.interface';
@@ -12,26 +12,27 @@ import {
 import { Conversation } from '../../database/entities/conversation.entity';
 import { ConversationStatus } from '../../database/entities/conversation-status.enum';
 import { HandoffService } from '../handoff/handoff.service';
-import { AnswerConfig, AnswerResult, CacheOutcome, Citation } from './answer-result.interface';
+import { AnswerConfig, AnswerResult, CacheOutcome, Citation, EscalationReason } from './answer-result.interface';
 import { AnswerCacheService, CachedAnswer, WorkspaceCacheIdentity } from '../../cache/answer-cache.service';
+import { isBillableAnswer, UsageMeter } from '../../metering/usage-meter.service';
+import { QuotaExceededException, QuotaService } from '../../metering/quota.service';
+import { isUniqueViolation } from '../../common/utils/postgres-errors';
 
 const NO_INFORMATION_ANSWER = "I don't have information about that.";
 const ESCALATION_ANSWER =
   "I'm having trouble generating an answer right now — let me connect you with a member of our team who can help.";
+const HANDOFF_ANSWER = 'Let me connect you with a member of our team who can help with that.';
 const CITATION_PATTERN = /\[(\d+)\]/g;
 
 export const CONFIDENT_DISTANCE_THRESHOLD = 0.45;
 
-// Part of every answer-cache key. Bump it whenever anything that shapes a generated answer
-// changes — the system prompt, the model, the temperature, the confidence threshold — so a
-// deploy can never serve answers produced under the previous behaviour.
 export const ANSWER_PROMPT_VERSION = 1;
 
-// What gets written alongside every conversation turn for the Phase 14 shadow tier.
 interface ConversationRecord {
   identity: WorkspaceCacheIdentity | null;
   questionEmbedding: number[] | null;
   shadow: { conversationId: number; distance: number } | null;
+  idempotencyKey: string | null;
 }
 
 
@@ -43,6 +44,9 @@ export class AnswerService {
     @InjectRepository(Conversation) private readonly conversations: Repository<Conversation>,
     private readonly handoffService: HandoffService,
     private readonly answerCache: AnswerCacheService,
+    @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly meter: UsageMeter,
+    private readonly quota: QuotaService,
   ) {}
 
   async getConfig(workspaceId: number): Promise<AnswerConfig> {
@@ -55,7 +59,68 @@ export class AnswerService {
     };
   }
 
-  async answer(workspaceId: number, question: string, sessionId: string | null = null): Promise<AnswerResult> {
+  async answer(
+    workspaceId: number,
+    question: string,
+    sessionId: string | null = null,
+    idempotencyKey: string | null = null,
+  ): Promise<AnswerResult> {
+
+    if (idempotencyKey) {
+      const prior = await this.findReplay(workspaceId, idempotencyKey);
+      if (prior) return prior;
+    }
+
+    const reservation = await this.quota.reserve(workspaceId);
+    if (reservation.state === 'exhausted' || reservation.state === 'expired') {
+      throw new QuotaExceededException(reservation);
+    }
+
+    let result: AnswerResult;
+    try {
+      result = await this.produce(workspaceId, question, sessionId, idempotencyKey);
+    } catch (error) {
+      await this.quota.refund(reservation); // nothing was delivered, so nothing is counted
+      throw error;
+    }
+
+    if (!isBillableAnswer(result.status) || result.replayed) {
+      await this.quota.refund(reservation);
+    }
+    return result;
+  }
+
+  async escalateUnanswered(
+    workspaceId: number,
+    question: string,
+    sessionId: string | null,
+    reason: EscalationReason,
+  ): Promise<AnswerResult> {
+    return this.persistAndReturn(
+      workspaceId,
+      question,
+      {
+        answer: HANDOFF_ANSWER,
+        citations: [],
+        status: ConversationStatus.ESCALATED,
+        minDistance: null,
+        promptTokens: null,
+        totalTokens: null,
+        retrievedChunks: [],
+        cache: 'bypass',
+        escalationReason: reason,
+      },
+      sessionId,
+      { identity: null, questionEmbedding: null, shadow: null, idempotencyKey: null },
+    );
+  }
+
+  private async produce(
+    workspaceId: number,
+    question: string,
+    sessionId: string | null,
+    idempotencyKey: string | null,
+  ): Promise<AnswerResult> {
     const identity = await this.answerCache.getIdentity(workspaceId);
     const cacheKey = identity ? this.answerCache.buildKey(identity, ANSWER_PROMPT_VERSION, question) : null;
 
@@ -63,11 +128,11 @@ export class AnswerService {
     const eligible = cacheKey !== null && !hasHistory;
 
     if (!eligible) {
-      return this.runPipeline(workspaceId, question, sessionId, hasHistory, null, identity);
+      return this.runPipeline(workspaceId, question, sessionId, hasHistory, null, identity, idempotencyKey);
     }
 
     const cached = await this.answerCache.get(cacheKey);
-    if (cached) return this.serveHit(workspaceId, question, sessionId, cached, identity);
+    if (cached) return this.serveHit(workspaceId, question, sessionId, cached, identity, idempotencyKey);
 
     // Single-flight. Without this, 200 customers asking the same new question in the same
     // second all miss and all call Gemini — enough to exhaust the whole 20/day generation
@@ -76,13 +141,13 @@ export class AnswerService {
 
     if (lock.state === 'held') {
       const waited = await this.answerCache.locks.waitForEntry(cacheKey, (key) => this.answerCache.get(key));
-      if (waited) return this.serveHit(workspaceId, question, sessionId, waited, identity);
+      if (waited) return this.serveHit(workspaceId, question, sessionId, waited, identity, idempotencyKey);
       // The holder finished without caching (a refusal or an escalation), or ran past the wait
       // budget. Fall through and do the work — waiting forever is never the right answer.
     }
 
     try {
-      return await this.runPipeline(workspaceId, question, sessionId, hasHistory, cacheKey, identity);
+      return await this.runPipeline(workspaceId, question, sessionId, hasHistory, cacheKey, identity, idempotencyKey);
     } finally {
       // finally, not after the return: a thrown error must release the lock too, or this
       // question would be locked out until the TTL expired.
@@ -103,6 +168,7 @@ export class AnswerService {
     sessionId: string | null,
     cached: CachedAnswer,
     identity: WorkspaceCacheIdentity | null,
+    idempotencyKey: string | null,
   ): Promise<AnswerResult> {
     // No embedding and no generation call happened, so none are reported — Phase 15 meters
     // on these fields. It is still a real customer exchange, so it is still logged. No
@@ -112,7 +178,7 @@ export class AnswerService {
       question,
       { ...cached, promptTokens: 0, totalTokens: 0, cache: 'hit' },
       sessionId,
-      { identity, questionEmbedding: null, shadow: null },
+      { identity, questionEmbedding: null, shadow: null, idempotencyKey },
     );
   }
 
@@ -125,9 +191,29 @@ export class AnswerService {
     hasHistory: boolean,
     cacheKey: string | null,
     identity: WorkspaceCacheIdentity | null,
+    idempotencyKey: string | null,
   ): Promise<AnswerResult> {
     const cacheOutcome: CacheOutcome = hasHistory ? 'bypass' : 'miss';
-    const { chunks, queryEmbedding } = await this.retrievalService.retrieveRelevantChunks(workspaceId, question);
+    // Embedding the question calls Gemini too, and until Phase 15 a failure here escaped as a
+    // raw 500 — a widget visitor got an error where a generation failure (Phase 10) would have
+    // got a handoff. Same treatment now: escalate, never cache, never bill.
+    let retrieved: Awaited<ReturnType<RetrievalService['retrieveRelevantChunks']>>;
+    try {
+      retrieved = await this.retrievalService.retrieveRelevantChunks(workspaceId, question);
+    } catch {
+      return this.persistAndReturn(workspaceId, question, {
+        answer: ESCALATION_ANSWER,
+        citations: [],
+        status: ConversationStatus.ESCALATED,
+        minDistance: null,
+        promptTokens: null,
+        totalTokens: null,
+        retrievedChunks: [],
+        cache: cacheOutcome,
+        escalationReason: 'retrieval_failed',
+      }, sessionId, { identity, questionEmbedding: null, shadow: null, idempotencyKey });
+    }
+    const { chunks, queryEmbedding } = retrieved;
 
     // Shadow tier: what WOULD a semantic cache have served here? Recorded, never used. Runs
     // before the refuse/answer branch on purpose — a semantic cache serving a cached ANSWER to
@@ -138,7 +224,7 @@ export class AnswerService {
       cacheKey && identity
         ? await this.answerCache.findShadowCandidate(identity, ANSWER_PROMPT_VERSION, queryEmbedding)
         : null;
-    const record: ConversationRecord = { identity, questionEmbedding: queryEmbedding, shadow };
+    const record: ConversationRecord = { identity, questionEmbedding: queryEmbedding, shadow, idempotencyKey };
 
     const distances = chunks.map((chunk) => chunk.distance).filter((d) => Number.isFinite(d));
     const minDistance = distances.length > 0 ? Math.min(...distances) : null;
@@ -190,6 +276,7 @@ export class AnswerService {
         totalTokens: null,
         retrievedChunks,
         cache: cacheOutcome,
+        escalationReason: 'generation_failed',
       }, sessionId, record);
     }
 
@@ -232,6 +319,9 @@ export class AnswerService {
     return rows.reverse();
   }
 
+  // The conversation row and its usage event are written in ONE transaction: both exist or
+  // neither does. There is no instant at which the customer has received an answer that was
+  // recorded but not metered — the gap a separate write after commit would leave open.
   private async persistAndReturn(
     workspaceId: number,
     question: string,
@@ -239,30 +329,82 @@ export class AnswerService {
     sessionId: string | null,
     record: ConversationRecord,
   ): Promise<AnswerResult> {
-    await this.conversations.save({
-      workspaceId,
-      sessionId,
-      question,
-      answer: result.answer,
-      status: result.status,
-      minDistance: result.minDistance,
-      citations: result.citations,
-      questionEmbedding: record.questionEmbedding,
-      knowledgeVersion: record.identity?.knowledgeVersion ?? null,
-      promptVersion: ANSWER_PROMPT_VERSION,
-      cacheOutcome: result.cache,
-      nearestPriorConversationId: record.shadow?.conversationId ?? null,
-      nearestPriorDistance: record.shadow?.distance ?? null,
-    });
+    try {
+      await this.dataSource.transaction(async (manager) => {
+        const saved = await manager.save(Conversation, {
+          workspaceId,
+          sessionId,
+          question,
+          answer: result.answer,
+          status: result.status,
+          minDistance: result.minDistance,
+          citations: result.citations,
+          questionEmbedding: record.questionEmbedding,
+          knowledgeVersion: record.identity?.knowledgeVersion ?? null,
+          promptVersion: ANSWER_PROMPT_VERSION,
+          cacheOutcome: result.cache,
+          nearestPriorConversationId: record.shadow?.conversationId ?? null,
+          nearestPriorDistance: record.shadow?.distance ?? null,
+          idempotencyKey: record.idempotencyKey,
+        });
 
-    // A genuine escalation is the one outcome an agent actually needs to see (Phase 12) —
-    // recorded against the session as a whole, not this one turn, and only when there's a
-    // session to record it against at all (the dashboard's own manual /ask calls have none).
+        await this.meter.record(manager, {
+          workspaceId,
+          metric: 'answer',
+          quantity: 1,
+          billable: isBillableAnswer(result.status),
+          // One event per conversation row, by construction.
+          idempotencyKey: `conversation:${saved.id}`,
+          conversationId: saved.id,
+          attributes: {
+            status: result.status,
+            cache: result.cache,
+            promptTokens: result.promptTokens,
+            totalTokens: result.totalTokens,
+            // Only an answer that actually called the model has one to name.
+            model: result.totalTokens ? GENERATION_MODEL : null,
+            ...(result.escalationReason ? { escalationReason: result.escalationReason } : {}),
+          },
+        });
+      });
+    } catch (error) {
+
+      if (record.idempotencyKey && isUniqueViolation(error, 'UQ_conversations_idempotency')) {
+        const winner = await this.findReplay(workspaceId, record.idempotencyKey);
+        if (winner) return winner;
+      }
+      throw error;
+    }
+
     if (result.status === ConversationStatus.ESCALATED && sessionId) {
       await this.handoffService.recordEscalation(workspaceId, sessionId);
     }
 
     return result;
+  }
+
+  private async findReplay(workspaceId: number, idempotencyKey: string): Promise<AnswerResult | null> {
+    const [row] = await this.dataSource.query(
+      `SELECT c.answer, c.citations, c.status, c.min_distance AS "minDistance", c.cache_outcome AS "cacheOutcome",
+              ue.attributes
+       FROM conversations c
+       LEFT JOIN usage_events ue ON ue.conversation_id = c.id AND ue.metric = 'answer'
+       WHERE c.workspace_id = $1 AND c.idempotency_key = $2`,
+      [workspaceId, idempotencyKey],
+    );
+    if (!row) return null;
+    const attributes = (row.attributes ?? {}) as { promptTokens?: number | null; totalTokens?: number | null };
+    return {
+      answer: row.answer,
+      citations: row.citations,
+      status: row.status,
+      minDistance: row.minDistance,
+      promptTokens: attributes.promptTokens ?? null,
+      totalTokens: attributes.totalTokens ?? null,
+      retrievedChunks: [],
+      cache: row.cacheOutcome ?? 'miss',
+      replayed: true,
+    };
   }
 }
 

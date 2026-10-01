@@ -14,6 +14,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
 import { LoginThrottleGuard } from '../../common/guards/login-throttle.guard';
 import { RedisModule } from '../../redis/redis.module';
 import { TenancyModule } from '../tenancy/tenancy.module';
+import { MeteringModule } from '../../metering/metering.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { TenancyModule } from '../tenancy/tenancy.module';
     PassportModule,
     RedisModule,
     TenancyModule,
+    MeteringModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

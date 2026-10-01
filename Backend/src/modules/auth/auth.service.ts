@@ -1,6 +1,6 @@
 import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { createHash, randomUUID } from 'crypto';
@@ -19,6 +19,7 @@ export interface TokenPair {
 }
 
 import { PermissionsService } from '../tenancy/permissions.service';
+import { QuotaService } from '../../metering/quota.service';
 @Injectable()
 export class AuthService {
   constructor(
@@ -30,6 +31,8 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly permissions: PermissionsService,
+    @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly quota: QuotaService,
   ) {}
 
   // Lets a freshly-logged-in client (the Frontend console, Phase 12) discover which
@@ -60,16 +63,22 @@ export class AuthService {
       throw new ConflictException('An account with this email already exists.');
     }
 
+    // bcrypt before the transaction: it takes ~250 ms on purpose, and must not hold row locks.
     const passwordHash = await this.passwordService.hash(dto.password);
-    const user = await this.users.save({ email: dto.email, passwordHash });
-    const workspace = await this.workspaces.save({ name: dto.workspaceName, publicKey: randomUUID() });
-    await this.memberships.save({
-      userId: user.id,
-      workspaceId: workspace.id,
-      role: MembershipRole.OWNER,
+
+    // One transaction for everything a new account consists of. It used to be three separate
+    // saves; adding the trial quota made that unsafe rather than merely untidy — a crash after
+    // the workspace but before its quota row would leave a workspace with NO quota rows, which
+    // QuotaService reads as pay-as-you-go: unlimited, free.
+    const userId = await this.dataSource.transaction(async (manager) => {
+      const user = await manager.save(User, { email: dto.email, passwordHash });
+      const workspace = await manager.save(Workspace, { name: dto.workspaceName, publicKey: randomUUID() });
+      await manager.save(Membership, { userId: user.id, workspaceId: workspace.id, role: MembershipRole.OWNER });
+      await this.quota.createTrial(manager, workspace.id);
+      return user.id;
     });
 
-    return this.issueTokenPair(user.id);
+    return this.issueTokenPair(userId);
   }
 
   async login(dto: LoginDto): Promise<TokenPair> {

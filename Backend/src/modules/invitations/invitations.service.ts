@@ -20,6 +20,7 @@ import { FixedWindowRateLimiter } from '../../common/rate-limit/fixed-window-rat
 import { buildOffsetPage, OffsetPage } from '../../common/pagination/pagination';
 import { DEFAULT_PAGE_SIZE } from '../../common/pagination/pagination-query.dto';
 import { containsPattern } from '../../common/utils/like-pattern';
+import { isUniqueViolation } from '../../common/utils/postgres-errors';
 import { EmailService } from '../../email/email.service';
 import { DeliveryOutcome, EmailDeliveryEvents } from '../../email/email-delivery-events';
 import { buildInvitationEmail } from './invitation-email';
@@ -346,10 +347,6 @@ export function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
 }
 
-function isUniqueViolation(error: unknown, constraint: string): boolean {
-  const driverError = (error as { driverError?: { code?: string; constraint?: string } }).driverError;
-  return driverError?.code === '23505' && driverError.constraint === constraint;
-}
 
 function toSummary(row: Record<string, unknown>): InvitationSummary {
   const iso = (value: unknown) => (value ? new Date(value as string).toISOString() : null);

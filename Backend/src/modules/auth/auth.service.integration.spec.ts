@@ -8,6 +8,7 @@ import { RefreshToken } from '../../database/entities/refresh-token.entity';
 import { AuthService } from './auth.service';
 import { PasswordService } from './password.service';
 import { PermissionsService } from '../tenancy/permissions.service';
+import { QuotaService } from '../../metering/quota.service';
 import { resetDatabase } from '../../../test/helpers/reset-database';
 
 describe('AuthService (integration)', () => {
@@ -34,6 +35,8 @@ describe('AuthService (integration)', () => {
       jwtService,
       configService,
       permissionsService,
+      AppDataSource,
+      new QuotaService(AppDataSource),
     );
   });
 

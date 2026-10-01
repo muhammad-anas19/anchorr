@@ -128,6 +128,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
           workspaceName={current.workspaceName}
           userEmail={userEmail}
           role={current.role}
+          permissions={current.permissions}
           expanded={expanded}
           onToggle={toggleRail}
           onLogout={handleLogout}

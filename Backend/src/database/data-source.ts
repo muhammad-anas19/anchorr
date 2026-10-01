@@ -13,6 +13,8 @@ import { ConversationSession } from './entities/conversation-session.entity';
 import { PermissionEntity } from './entities/permission.entity';
 import { RolePermission } from './entities/role-permission.entity';
 import { Invitation } from './entities/invitation.entity';
+import { UsageEvent } from './entities/usage-event.entity';
+import { WorkspaceQuota } from './entities/workspace-quota.entity';
 
 config();
 
@@ -36,6 +38,8 @@ export const AppDataSource = new DataSource({
     PermissionEntity,
     RolePermission,
     Invitation,
+    UsageEvent,
+    WorkspaceQuota,
   ],
   migrations: ['src/database/migrations/*.ts'],
   synchronize: false,

@@ -1,4 +1,7 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Headers, Param, ParseIntPipe, Post, UseGuards } from '@nestjs/common';
+import { CurrentUser, CurrentUserPayload } from '../../common/decorators/current-user.decorator';
+import { scopedIdempotencyKey } from '../../common/utils/idempotency-key';
+import { AskRateLimitGuard } from '../../common/guards/ask-rate-limit.guard';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { WorkspaceGuard } from '../../common/guards/workspace.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
@@ -15,9 +18,20 @@ import { AskDto } from './dto/ask.dto';
 export class AnswerController {
   constructor(private readonly answerService: AnswerService) {}
 
+  // Idempotency-Key is the standard header for this (Stripe's convention, now an IETF draft):
+  // the client generates it once and resends it unchanged on a retry.
+  // Method-level, so it runs after the class guards: only an authenticated member of this
+  // workspace can spend (or learn anything from) the workspace's rate-limit budget.
   @Post()
-  ask(@Param('workspaceId', ParseIntPipe) workspaceId: number, @Body() dto: AskDto) {
-    return this.answerService.answer(workspaceId, dto.question, dto.sessionId ?? null);
+  @UseGuards(AskRateLimitGuard)
+  ask(
+    @Param('workspaceId', ParseIntPipe) workspaceId: number,
+    @Body() dto: AskDto,
+    @CurrentUser() user: CurrentUserPayload,
+    @Headers('idempotency-key') idempotencyKey?: string,
+  ) {
+    const key = scopedIdempotencyKey(`user:${user.userId}`, idempotencyKey);
+    return this.answerService.answer(workspaceId, dto.question, dto.sessionId ?? null, key);
   }
 
   @Get('config')

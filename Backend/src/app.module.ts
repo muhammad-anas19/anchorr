@@ -14,6 +14,8 @@ import { ConversationSession } from './database/entities/conversation-session.en
 import { PermissionEntity } from './database/entities/permission.entity';
 import { RolePermission } from './database/entities/role-permission.entity';
 import { Invitation } from './database/entities/invitation.entity';
+import { UsageEvent } from './database/entities/usage-event.entity';
+import { WorkspaceQuota } from './database/entities/workspace-quota.entity';
 import { AuthModule } from './modules/auth/auth.module';
 import { WorkspacesModule } from './modules/workspaces/workspaces.module';
 import { DocumentsModule } from './modules/documents/documents.module';
@@ -23,6 +25,7 @@ import { WidgetChatModule } from './modules/widget-chat/widget-chat.module';
 import { HandoffModule } from './modules/handoff/handoff.module';
 import { QueueModule } from './queue/queue.module';
 import { InvitationsModule } from './modules/invitations/invitations.module';
+import { UsageModule } from './modules/usage/usage.module';
 
 @Module({
   imports: [
@@ -50,6 +53,8 @@ import { InvitationsModule } from './modules/invitations/invitations.module';
           PermissionEntity,
           RolePermission,
           Invitation,
+          UsageEvent,
+          WorkspaceQuota,
         ],
         synchronize: false,
       }),
@@ -63,6 +68,7 @@ import { InvitationsModule } from './modules/invitations/invitations.module';
     WidgetChatModule,
     HandoffModule,
     InvitationsModule,
+    UsageModule,
   ],
   controllers: [AppController],
 })

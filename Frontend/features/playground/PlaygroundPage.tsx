@@ -17,8 +17,6 @@ const SUGGESTED_QUESTIONS = [
 
 export function PlaygroundPage() {
   const { workspaceId } = useWorkspace();
-  // A fresh session per page load — this is a staff testing tool, not a real customer
-  // session, so it deliberately does not persist the way Widget/'s own session.ts does.
   const [sessionId] = useState(() => crypto.randomUUID());
   const [question, setQuestion] = useState('');
   const [turns, setTurns] = useState<Turn[]>([]);
@@ -35,10 +33,6 @@ export function PlaygroundPage() {
     // changing the count, and that is exactly when the view needs to follow it down.
   }, [turns]);
 
-  // The turn is appended before the request starts, so the question bubble appears on the
-  // same frame as the click rather than a Gemini round trip later. The row is then patched in
-  // place by id — not replaced by index, which would attach the answer to the wrong bubble if
-  // the list ever changed shape underneath it.
   async function runTurn(turnId: string, questionText: string) {
     const startedAt = performance.now();
     try {

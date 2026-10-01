@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { GoogleGenAI } from '@google/genai';
 import { EmbeddingProvider } from './embedding-provider.interface';
 
-const EMBEDDING_MODEL = 'gemini-embedding-001';
+export const EMBEDDING_MODEL = 'gemini-embedding-001';
 // The model's native output is 3072 dimensions — above pgvector's 2000-dimension ceiling
 // for HNSW/IVFFlat indexes (the vector *type* itself allows up to 16000, but the index
 // types this project needs for Phase 8 don't). 768 is an officially supported, requested

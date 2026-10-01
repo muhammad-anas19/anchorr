@@ -22,6 +22,8 @@ import { PermissionsService } from '../tenancy/permissions.service';
 import { ConversationSession } from '../../database/entities/conversation-session.entity';
 import { ConversationSessionStatus } from '../../database/entities/conversation-session-status.enum';
 import { AnswerService } from '../answer/answer.service';
+import type { AnswerResult } from '../answer/answer-result.interface';
+import { QuotaExceededException } from '../../metering/quota.service';
 import { RealtimeBroadcaster } from '../../realtime/realtime-broadcaster.service';
 import { AgentPresenceService } from '../../realtime/agent-presence.service';
 import { agentUserRoom, conversationRoom, agentsRoom } from '../../realtime/rooms';
@@ -193,13 +195,29 @@ export class WidgetChatGateway implements OnGatewayConnection, OnGatewayDisconne
       return;
     }
 
-    const result = await this.answerService.answer(connection.workspaceId, dto.question, connection.sessionId);
+    // Scoped by session: a visitor can only ever replay their own messages.
+    const idempotencyKey = dto.clientMessageId ? `session:${connection.sessionId}:${dto.clientMessageId}` : null;
+    let result: AnswerResult;
+    try {
+      result = await this.answerService.answer(connection.workspaceId, dto.question, connection.sessionId, idempotencyKey);
+    } catch (error) {
+      if (!(error instanceof QuotaExceededException)) throw error;
+      // Over allowance: hand the visitor to a human rather than refusing them. The business
+      // still receives the conversation (it lands in the agent queue), and the visitor sees
+      // an ordinary handoff — nothing about the business's billing.
+      result = await this.answerService.escalateUnanswered(
+        connection.workspaceId,
+        dto.question,
+        connection.sessionId,
+        'quota_exhausted',
+      );
+    }
 
     // Broadcast to the whole room, including the sender, rather than acking the caller
     // directly — the same room a human agent's own connection (Phase 12) joins once they
     // claim the session, so this transport never needed reworking once handoff existed
     // (this phase's Q10).
-    this.server.to(room).emit('answer', result);
+    this.server.to(room).emit('answer', toPublicAnswer(result));
   }
 
   // An agent's own socket joins a specific conversation's room only after this — never
@@ -265,4 +283,18 @@ export class WidgetChatGateway implements OnGatewayConnection, OnGatewayDisconne
 
     this.server.to(conversationRoom(dto.sessionId)).emit('agent-message', { message: dto.message });
   }
+}
+
+// What an anonymous widget visitor receives. Until Phase 15 the gateway broadcast the whole
+// AnswerResult — including retrievedChunks (160-character snippets of documents the answer did
+// NOT cite), raw distances and token counts: internal retrieval data, readable by anyone in
+// devtools. Now also the escalation reason, which could reveal the business's quota state. The
+// widget only ever used answer/status/citations; that is all it gets.
+function toPublicAnswer(result: AnswerResult) {
+  return {
+    answer: result.answer,
+    status: result.status,
+    citations: result.citations.map(({ index, documentId, originalFilename }) => ({ index, documentId, originalFilename })),
+    ...(result.replayed ? { replayed: true } : {}),
+  };
 }
